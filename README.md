@@ -1,6 +1,13 @@
-# PulseStudio v0.2.118
+# PulseStudio v0.2.119
 
-## v0.2.118 analytics coverage and reminder alignment
+## v0.2.119 analytics delivery reliability
+
+- Uses PostHog batch ingestion for desktop analytics delivery.
+- Prefers Electron Chromium networking so system/corporate proxy, DNS, and certificate settings are honored.
+- Falls back to Node HTTPS if Electron networking is unavailable before a response is received.
+- Records transport, endpoint, HTTP status, last send time, and connection error in diagnostics for troubleshooting.
+- Recording, microphone, RNNoise, fan-noise suppression, echo handling, playback, and capture logic are unchanged.
+
 
 - Aligned the two analytics reminder actions to equal width and height while preserving the existing dialog design.
 - Expanded anonymous product analytics without collecting recording content, audio, transcripts, filenames, bookmark text, names, email addresses, or exact location.
@@ -341,7 +348,7 @@ Do not delete recovery files if a recording was interrupted; PulseStudio protect
 
 PulseStudio v0.2.112 and later can check the public `girishxp/PulseStudio` GitHub Releases feed automatically. When a newer `PulseStudio-cross-platform-v<version>.zip` release is available, PulseStudio downloads it only while recording/recovery/AI work is idle, verifies the GitHub asset size and SHA-256 digest when GitHub supplies one, and shows **Restart and update** in App Diagnostics. The update helper applies the ZIP only after PulseStudio exits, preserves local dependencies/logs, and restarts the normal PulseStudio launcher.
 
-For future releases, publish a normal GitHub Release with a semantic tag such as `v0.2.118` and attach exactly `PulseStudio-cross-platform-v0.2.118.zip`. No AWS server is required.
+For future releases, publish a normal GitHub Release with a semantic tag such as `v0.2.119` and attach exactly `PulseStudio-cross-platform-v0.2.119.zip`. No AWS server is required.
 
 ## Anonymous product analytics
 

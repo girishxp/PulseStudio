@@ -4,6 +4,8 @@ const os = require('os');
 const crypto = require('crypto');
 const https = require('https');
 const http = require('http');
+let electronNet = null;
+try { ({ net: electronNet } = require('electron')); } catch {}
 
 function readJson(file, fallback = {}) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; }
@@ -43,7 +45,7 @@ class AnalyticsManager {
     this.sending = false;
     this.startedAt = Date.now();
     this.sessionId = crypto.randomUUID();
-    this.state = { configured: false, enabled: false, consentKnown: false, provider: 'none', lastSentAt: 0, lastError: '', queued: 0 };
+    this.state = { configured: false, enabled: false, consentKnown: false, provider: 'none', lastSentAt: 0, lastAttemptAt: 0, lastError: '', lastHttpStatus: 0, lastTransport: '', lastEndpoint: '', queued: 0 };
   }
   init() {
     this.config = readJson(this.configPath, {});
@@ -321,8 +323,9 @@ class AnalyticsManager {
     if (this.sending || !this.state.enabled || !this.queue.length) return;
     this.sending = true;
     const batch = this.queue.splice(0, Math.min(20, this.queue.length));
+    this.state.lastAttemptAt = Date.now();
     try {
-      for (const item of batch) await this.sendOne(item);
+      await this.sendBatch(batch);
       this.state.lastSentAt = Date.now();
       this.state.lastError = '';
     } catch (error) {
@@ -339,16 +342,77 @@ class AnalyticsManager {
       }
     }
   }
-  sendOne(item) {
+  async sendBatch(items) {
     const host = new URL(this.config.host);
-    const endpoint = new URL('/capture/', host);
-    const payload = Buffer.from(JSON.stringify({ api_key: this.config.apiKey, event: item.event, properties: item.properties, timestamp: item.timestamp }));
+    // PostHog's batch ingestion endpoint is used deliberately here instead of the
+    // legacy /capture/ route. It is the most reliable path for non-browser desktop
+    // clients and lets PulseStudio send a queued group atomically.
+    const endpoint = new URL('/batch/', host);
+    const payload = Buffer.from(JSON.stringify({
+      api_key: this.config.apiKey,
+      batch: items.map((item) => ({
+        event: item.event,
+        properties: item.properties,
+        timestamp: item.timestamp
+      }))
+    }));
+    this.state.lastEndpoint = endpoint.pathname;
+    this.state.lastHttpStatus = 0;
+
+    // Prefer Electron's Chromium network stack so corporate/system proxy, DNS and
+    // certificate settings match the rest of PulseStudio. Fall back to Node HTTPS
+    // if Electron net is unavailable or fails before receiving a response.
+    if (electronNet?.fetch) {
+      try {
+        const response = await electronNet.fetch(endpoint.toString(), {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': `PulseStudio/${this.app.getVersion()}`
+          },
+          body: payload
+        });
+        this.state.lastHttpStatus = Number(response.status || 0);
+        this.state.lastTransport = 'electron-net';
+        if (response.ok) {
+          try { await response.arrayBuffer(); } catch {}
+          return;
+        }
+        let detail = '';
+        try { detail = safeText(await response.text(), 120); } catch {}
+        throw new Error(`Analytics service returned HTTP ${response.status}${detail ? `: ${detail}` : ''}.`);
+      } catch (error) {
+        // If PostHog actually returned an HTTP status, do not retry through a second
+        // transport because that can duplicate an accepted-but-unusual response.
+        if (this.state.lastHttpStatus) throw error;
+        this.state.lastTransport = 'electron-net-failed';
+        this.state.lastError = safeText(error?.message || error, 180);
+      }
+    }
+
+    await this.sendBatchWithNode(endpoint, payload);
+  }
+  sendBatchWithNode(endpoint, payload) {
     const client = endpoint.protocol === 'http:' ? http : https;
     return new Promise((resolve, reject) => {
-      const req = client.request(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json', 'Content-Length': payload.length, 'User-Agent': `PulseStudio/${this.app.getVersion()}` }, timeout: 10000 }, (res) => {
-        res.resume();
-        if (res.statusCode >= 200 && res.statusCode < 300) resolve();
-        else reject(new Error(`Analytics service returned HTTP ${res.statusCode}.`));
+      const req = client.request(endpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': payload.length,
+          'User-Agent': `PulseStudio/${this.app.getVersion()}`
+        },
+        timeout: 10000
+      }, (res) => {
+        let body = '';
+        res.setEncoding('utf8');
+        res.on('data', (chunk) => { if (body.length < 512) body += chunk; });
+        res.on('end', () => {
+          this.state.lastHttpStatus = Number(res.statusCode || 0);
+          this.state.lastTransport = 'node-https';
+          if (res.statusCode >= 200 && res.statusCode < 300) resolve();
+          else reject(new Error(`Analytics service returned HTTP ${res.statusCode}${body ? `: ${safeText(body, 120)}` : ''}.`));
+        });
       });
       req.on('timeout', () => req.destroy(new Error('Analytics request timed out.')));
       req.on('error', reject);
