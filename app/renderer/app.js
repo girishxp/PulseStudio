@@ -7151,7 +7151,7 @@ async function refreshDiagnostics() {
   try {
     const d = await window.recorderAPI.getDiagnostics();
     state.lastDiagnostics = d;
-    $('aboutVersion').textContent = d.version || state.platformInfo?.version || '0.2.119';
+    $('aboutVersion').textContent = d.version || state.platformInfo?.version || '0.2.120';
     $('diagnosticBuild').textContent = d.packaged ? 'Installed / packaged' : 'Development build';
     $('diagnosticPlatform').textContent = `${d.platform} · ${d.arch} · ${d.release}`;
     const encoding = d.videoEncoding || {};
@@ -7339,7 +7339,7 @@ async function init() {
   state.platformInfo = info;
   applyStartupRecoveryState({ inProgress: Boolean(info.startupRecoveryInProgress) });
   document.documentElement.dataset.platform = info.platform;
-  $('aboutVersion').textContent = info.version || '0.2.119';
+  $('aboutVersion').textContent = info.version || '0.2.120';
   renderWindowCapturePrivacy(await window.recorderAPI.getWindowCapturePrivacy?.().catch(() => ({ enabled: true, supported: info.platform === 'darwin' || info.platform === 'win32' })) || { enabled: true, supported: true });
   const applicationAudioOption = $('computerAudioMode')?.querySelector('option[value="application"]');
   if (applicationAudioOption && !info.applicationAudioSupported) applicationAudioOption.disabled = true;
