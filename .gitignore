@@ -1,0 +1,58 @@
+# Dependencies
+node_modules/
+
+# Build/package output
+dist/
+build/
+out/
+release/
+*.zip
+*.dmg
+*.pkg
+*.exe
+*.msi
+
+# Logs
+*.log
+logs/
+
+# Runtime / recovery / temp
+recovery/
+temp/
+tmp/
+*.tmp
+*.partial
+*.partial.*
+*.crash
+*.dump
+
+# Recordings / exported media
+*.mp4
+*.mov
+*.mkv
+*.webm
+*.mp3
+*.m4a
+*.wav
+*.aac
+
+# macOS
+.DS_Store
+
+# Windows
+Thumbs.db
+Desktop.ini
+
+# IDE/editor
+.vscode/
+.idea/
+*.sublime-workspace
+
+# Environment / secrets
+.env
+.env.*
+!.env.example
+
+# Local caches
+.cache/
+coverage/

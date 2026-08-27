@@ -1,0 +1,96 @@
+{
+  "name": "pulsestudio",
+  "version": "0.2.111",
+  "description": "PulseStudio - your intelligent workspace for screen, voice, and playback.",
+  "main": "main.js",
+  "author": "Girish Gupta <girish.gupta@gmail.com>",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dev": "electron .",
+    "dist": "electron-builder",
+    "dist:mac": "electron-builder --mac",
+    "dist:win": "electron-builder --win",
+    "dist:prod:mac": "electron-builder --config electron-builder.production.yml --mac",
+    "dist:prod:win": "electron-builder --config electron-builder.production.yml --win"
+  },
+  "devDependencies": {
+    "electron": "43.3.0",
+    "electron-builder": "^26.0.0"
+  },
+  "dependencies": {
+    "ffmpeg-static": "^5.2.0",
+    "@huggingface/transformers": "^4.2.0",
+    "uiohook-napi": "^1.5.5",
+    "loopback-capture": "2.0.0",
+    "@sapphi-red/web-noise-suppressor": "0.3.5",
+    "deepfilternet3-noise-filter": "1.3.0",
+    "electron-updater": "^6.6.2"
+  },
+  "build": {
+    "appId": "com.girishxp.pulsestudio",
+    "productName": "PulseStudio",
+    "asar": true,
+    "asarUnpack": [
+      "node_modules/ffmpeg-static/**",
+      "node_modules/onnxruntime-node/**",
+      "node_modules/uiohook-napi/**",
+      "native/**",
+      "node_modules/loopback-capture/**",
+      "node_modules/bindings/**"
+    ],
+    "files": [
+      "main.js",
+      "ai-worker.js",
+      "insights.js",
+      "preload.js",
+      "lib/**/*",
+      "renderer/**/*",
+      "native/**/*",
+      "assets/**/*",
+      "entitlements.mac.plist",
+      "package.json",
+      "update-feed.json"
+    ],
+    "directories": {
+      "output": "dist"
+    },
+    "mac": {
+      "target": [
+        "dmg",
+        "zip"
+      ],
+      "category": "public.app-category.utilities",
+      "hardenedRuntime": true,
+      "entitlements": "entitlements.mac.plist",
+      "entitlementsInherit": "entitlements.mac.plist",
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "PulseStudio uses the microphone when microphone recording is enabled.",
+        "NSAudioCaptureUsageDescription": "PulseStudio captures system audio when system audio recording is enabled.",
+        "NSCameraUsageDescription": "PulseStudio uses the camera when webcam overlay is enabled."
+      },
+      "icon": "assets/pulsestudio-icon.icns"
+    },
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "executableName": "PulseStudio",
+      "icon": "assets/pulsestudio-icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "PulseStudio",
+      "uninstallDisplayName": "PulseStudio"
+    },
+    "artifactName": "PulseStudio-${version}-${os}-${arch}.${ext}",
+    "linux": {
+      "icon": "assets/pulsestudio-icon.png",
+      "category": "Utility",
+      "executableName": "pulsestudio"
+    }
+  }
+}

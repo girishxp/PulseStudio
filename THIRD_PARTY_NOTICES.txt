@@ -1,0 +1,47 @@
+THIRD-PARTY NOTICES
+===================
+
+loopback-capture 2.0.0
+Copyright / author information is provided by the upstream package.
+License: MIT
+Project: https://github.com/WerdoxDev/loopback-capture
+Purpose in PulseStudio Utility: Windows x64 WASAPI process-loopback capture for selected-application audio.
+
+The package is installed through npm as part of the app dependencies. Its native implementation is based on the Microsoft Windows Application Loopback sample/API design.
+
+onnx-community/pyannote-segmentation-3.0
+License: MIT
+Project: https://huggingface.co/onnx-community/pyannote-segmentation-3.0
+Purpose in PulseStudio Utility: local speaker segmentation/diarization used for the default speaker-grouped transcript view.
+
+Xenova/wavlm-base-plus-sv
+Upstream model: microsoft/wavlm-base-plus-sv
+Project: https://huggingface.co/Xenova/wavlm-base-plus-sv
+Purpose in PulseStudio Utility: local speaker-verification embeddings used to keep recurring speaker identities stable across long meetings.
+
+onnx-community/Qwen2.5-1.5B-Instruct
+Base model: Qwen/Qwen2.5-1.5B-Instruct
+Project: https://huggingface.co/onnx-community/Qwen2.5-1.5B-Instruct
+Purpose in PulseStudio Utility: local enhanced meeting summary and explicit action-item extraction.
+
+@sapphi-red/web-noise-suppressor 0.3.5
+License: MIT
+Project: https://github.com/sapphi-red/web-noise-suppressor
+Purpose in PulseStudio Utility: primary local real-time RNNoise AudioWorklet used by Enhanced/Strong microphone fan/noise suppression while a source-preserving microphone sidecar remains available for recovery.
+
+Xiph.Org RNNoise
+License: BSD-3-Clause
+Project: https://github.com/xiph/rnnoise
+Purpose in PulseStudio Utility: recurrent-neural-network noise suppression used by Enhanced/Strong microphone cleanup.
+
+deepfilternet3-noise-filter 1.3.0
+License: Apache-2.0 OR MIT
+Project: https://github.com/mezonai/mezon-noise-suppression
+Upstream model/project: https://github.com/Rikorose/DeepFilterNet
+Purpose in PulseStudio Utility: packaged alternative neural speech-enhancement engine retained by the application; the current v0.2.105 Enhanced/Strong primary local noise-suppression path uses RNNoise.
+
+onnx-community/silero-vad
+License: MIT
+Project: https://huggingface.co/onnx-community/silero-vad
+Upstream project: https://github.com/snakers4/silero-vad
+Purpose in PulseStudio Utility: local post-recording voice-activity analysis used for diagnostics and speech-preservation checks only. VAD never controls microphone gain or deletes recorded speech.

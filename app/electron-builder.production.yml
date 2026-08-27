@@ -1,0 +1,53 @@
+appId: com.girishxp.pulsestudio
+productName: PulseStudio
+artifactName: PulseStudio-${version}-${os}-${arch}.${ext}
+asar: true
+asarUnpack:
+  - node_modules/ffmpeg-static/**
+  - node_modules/onnxruntime-node/**
+  - node_modules/uiohook-napi/**
+  - native/**
+  - node_modules/loopback-capture/**
+  - node_modules/bindings/**
+files:
+  - main.js
+  - ai-worker.js
+  - insights.js
+  - preload.js
+  - lib/**/*
+  - renderer/**/*
+  - native/**/*
+  - assets/**/*
+  - package.json
+  - entitlements.mac.plist
+  - update-feed.json
+directories:
+  output: dist-production
+forceCodeSigning: true
+mac:
+  icon: assets/pulsestudio-icon.icns
+  target:
+    - dmg
+    - zip
+  category: public.app-category.utilities
+  hardenedRuntime: true
+  gatekeeperAssess: false
+  notarize: true
+  entitlements: entitlements.mac.plist
+  entitlementsInherit: entitlements.mac.plist
+  extendInfo:
+    NSMicrophoneUsageDescription: PulseStudio uses the microphone when microphone recording is enabled.
+    NSAudioCaptureUsageDescription: PulseStudio captures system audio when system audio recording is enabled.
+    NSCameraUsageDescription: PulseStudio uses the camera when webcam overlay is enabled.
+win:
+  icon: assets/pulsestudio-icon.ico
+  target:
+    - nsis
+  executableName: PulseStudio
+nsis:
+  shortcutName: PulseStudio
+  uninstallDisplayName: PulseStudio
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true

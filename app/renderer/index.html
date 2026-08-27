@@ -1,0 +1,1061 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self' data: blob: recording:; img-src 'self' data: blob:; media-src 'self' blob: recording:; style-src 'self' 'unsafe-inline'; script-src 'self' appasset: blob: 'wasm-unsafe-eval'; connect-src 'self' appasset: https://cdn.mezon.ai; worker-src 'self' blob:;" />
+  <title>PulseStudio</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="full-window-top-drag-strip full-only" aria-hidden="true"></div>
+  <div class="app-shell">
+    <header class="topbar">
+      <div class="brand-block">
+        <div class="brand-mark" aria-hidden="true"><span class="brand-dot"></span></div>
+        <div class="brand-copy">
+          <div class="eyebrow">PULSESTUDIO</div>
+          <h1 id="brandTitle">Capture, play back, and transcribe</h1>
+        </div>
+      </div>
+      <div class="compact-mac-window-controls compact-only" id="compactMacWindowControls" aria-label="Mini window controls">
+        <button class="compact-mac-window-button close" id="compactMacCloseButton" type="button" aria-label="Close PulseStudio"></button>
+        <button class="compact-mac-window-button minimize" id="compactMacMinimizeButton" type="button" aria-label="Minimize Mini Controller"></button>
+      </div>
+      <div class="window-drag-handle" aria-hidden="true"></div>
+      <div class="topbar-actions">
+        <div class="appearance-controls" aria-label="Window appearance">
+          <span class="compact-privacy-indicator is-active" id="compactPrivacyIndicator" role="img" aria-label="Screen sharing privacy active" data-state="active">
+            <svg viewBox="0 0 24 24" aria-hidden="true">
+              <path class="compact-privacy-shield" d="M12 3.2 19 6v5.2c0 4.4-2.8 7.7-7 9.8-4.2-2.1-7-5.4-7-9.8V6l7-2.8Z"/>
+              <path class="compact-privacy-check" d="m8.7 12.1 2 2 4.6-4.7"/>
+              <path class="compact-privacy-off-mark" d="M7.4 7.4 16.6 16.6"/>
+            </svg>
+          </span>
+          <button class="header-button transparency-cycle-button" id="transparencyButton" type="button" aria-label="Window transparency: 0%" data-fast-tooltip-title="Window transparency: 0%" data-tooltip-delay="1000" data-tooltip-hover-only="true" data-tooltip-custom-only="true"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5"/><path d="M12 4.5a7.5 7.5 0 0 1 0 15Z"/></svg><span id="transparencyValue">0%</span></button>
+          <button class="icon-button" id="themeToggle" type="button" aria-label="Switch to light mode" title="Switch to light mode"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.5"/><path d="M12 2.8v2.1M12 19.1v2.1M2.8 12h2.1M19.1 12h2.1M5.5 5.5 7 7M17 17l1.5 1.5M18.5 5.5 17 7M7 17l-1.5 1.5"/></svg></button>
+        </div>
+        <button class="icon-button compact-only always-on-top-button" id="alwaysOnTopButton" type="button" aria-pressed="false" title="Keep Mini Controller above other windows" aria-label="Keep Mini Controller above other windows">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6l-1 5 3 3v2H7v-2l3-3-1-5Z"/><path d="M12 14v6"/></svg>
+        </button>
+        <button class="header-button compact-only compact-full-view-button" id="compactFullViewButton" type="button" title="Open Full View" aria-label="Open Full View"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5H5v4"/><path d="M15 5h4v4"/><path d="M19 15v4h-4"/><path d="M5 15v4h4"/></svg><span class="compact-full-view-label">Full View</span></button>
+        <button class="header-button full-only" id="themesButton" type="button" title="Choose visual theme">◈ Themes</button>
+        <button class="header-button" id="helpButton" type="button" title="Help">? Help</button>
+        <button class="header-button" id="aboutButton" type="button" title="About">ⓘ About</button>
+      </div>
+    </header>
+
+    <main class="layout" id="mainLayout">
+      <section class="panel workspace-panel" id="workspacePanel">
+        <div class="workspace-nav" aria-label="Recorder navigation">
+          <div class="workspace-tab-group workspace-content-tabs" role="tablist" aria-label="Recorder views">
+            <button class="workspace-tab workspace-content-tab active" id="captureWorkspaceTab" data-workspace="capture" type="button" role="tab" aria-selected="true" aria-controls="captureView">Record</button>
+            <button class="workspace-tab workspace-content-tab" id="playbackWorkspaceTab" data-workspace="playback" type="button" role="tab" aria-selected="false" aria-controls="playbackView">Playback</button>
+          </div>
+          <div class="workspace-tab-group workspace-mode-tabs" aria-label="Window view mode">
+            <button class="workspace-tab workspace-mode-tab active" id="fullViewButton" type="button" aria-pressed="true" title="Full view"><span class="mode-label-full">Full</span><span class="mode-label-compact">F</span></button>
+            <button class="workspace-tab workspace-mode-tab" id="compactViewButton" type="button" aria-pressed="false" title="Mini Controller"><span class="mode-label-full">Mini</span><span class="mode-label-compact">M</span></button>
+          </div>
+          <div class="workspace-playback-actions playback-only hidden" aria-label="Playback library actions">
+            <button class="workspace-action-button" id="refreshRecordings" type="button" title="Refresh recording library" aria-label="Refresh recording library">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20 11a8 8 0 1 0-2.34 5.66"/><path d="M20 4v7h-7"/></svg><span>Refresh</span>
+            </button>
+            <button class="workspace-action-button" id="openRecordingsFolder" type="button" title="Open recordings folder" aria-label="Open recordings folder">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5h6l2 2h10v9.5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M3 8.5h18"/></svg><span>Open folder</span>
+            </button>
+          </div>
+        </div>
+
+        <div id="captureView" class="workspace-view" role="tabpanel" aria-labelledby="captureWorkspaceTab">
+          <div class="panel-heading capture-heading">
+            <div>
+              <span class="record-section-kicker">CAPTURE</span>
+              <h2>Choose what to record</h2>
+              <p>Select a display, window, region, or all displays. Your current choice is highlighted clearly below.</p>
+            </div>
+            <div class="capture-tools">
+              <label class="thumbnail-slider" for="thumbnailSize">
+                <span>Thumbnail size</span>
+                <input id="thumbnailSize" type="range" min="50" max="420" step="10" value="250" />
+                <output id="thumbnailSizeValue" for="thumbnailSize">250 px</output>
+              </label>
+              <button class="button secondary small" id="refreshSources" type="button">Refresh</button>
+            </div>
+          </div>
+          <div class="capture-mode-row full-only">
+            <label class="compact-field">
+              <span>Capture mode</span>
+              <select id="captureMode">
+                <option value="source">Selected screen/window</option>
+                <option value="region">Region / area</option>
+                <option value="all">All displays</option>
+              </select>
+            </label>
+            <div id="regionTools" class="region-tools hidden">
+              <button class="button secondary small" id="chooseRegion" type="button">Set recording region</button>
+              <span id="regionSummary">No region selected</span>
+            </div>
+            <div id="allDisplaysNote" class="helper hidden">All screen displays will be combined into one recording. Window thumbnails are ignored in this mode.</div>
+          </div>
+          <div id="sourceGrid" class="source-grid"></div>
+          <div class="compact-recorder-card compact-only" id="compactRecorderCard">
+            <section class="compact-capture-setup" id="compactCaptureSetup">
+              <button class="compact-capture-toggle" id="compactCaptureSettingsToggle" type="button" aria-expanded="false" aria-controls="compactCaptureSettingsContent">
+                <span>Capture setup</span><span class="compact-capture-chevron" aria-hidden="true">⌄</span>
+              </button>
+              <div class="compact-capture-settings hidden" id="compactCaptureSettingsContent">
+                <label class="compact-setup-field compact-source-field">
+                  <span>Source</span>
+                  <select id="compactSourceSelect" aria-label="Capture source"></select>
+                </label>
+                <label class="compact-setup-field">
+                  <span>Capture mode</span>
+                  <select id="compactCaptureMode" aria-label="Capture mode">
+                    <option value="source">Selected screen/window</option>
+                    <option value="region">Region / area</option>
+                    <option value="all">All displays</option>
+                  </select>
+                </label>
+                <label class="compact-setup-field">
+                  <span>Quality</span>
+                  <select id="compactQuality" aria-label="Video quality">
+                    <option value="720">720p</option>
+                    <option value="1080" selected>1080p</option>
+                    <option value="1440">1440p</option>
+                    <option value="native">Native</option>
+                  </select>
+                </label>
+                <label class="compact-setup-field">
+                  <span>FPS</span>
+                  <select id="compactFrameRate" aria-label="Frame rate">
+                    <option value="15">15</option>
+                    <option value="25">25</option>
+                    <option value="30" selected>30</option>
+                    <option value="60">60</option>
+                  </select>
+                </label>
+                <button class="compact-region-button hidden" id="compactChooseRegion" type="button">Set region</button>
+              </div>
+            </section>
+            <div class="compact-record-row">
+              <div class="compact-record-time" id="compactRecordTime">
+                <button class="compact-record-mic-toggle hidden" id="compactRecordingMicToggle" type="button" aria-pressed="false" aria-label="Mute microphone" data-fast-tooltip-title="Mute microphone" data-tooltip-delay="700" data-tooltip-hover-only="true" data-tooltip-custom-only="true">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path class="compact-record-mic-body" d="M12 3.8a3 3 0 0 0-3 3v5.1a3 3 0 0 0 6 0V6.8a3 3 0 0 0-3-3Z"/><path class="compact-record-mic-stand" d="M6.8 11.4a5.2 5.2 0 0 0 10.4 0M12 16.6v3.2M9.2 19.8h5.6"/><path class="compact-record-mic-slash" d="M5 5l14 14"/></svg>
+                </button>
+                <span class="record-dot"></span>
+                <span class="recording-health-dot hidden" id="compactHealthIndicator" role="status" aria-label="Recording health is being checked" title="Recording health"></span>
+                <strong class="compact-record-state" id="compactRecordingState">READY</strong>
+                <strong id="compactRecordingDuration">00:00:00</strong>
+              </div>
+              <div class="compact-action-cluster" aria-label="Mini Controller recording controls">
+                <div class="compact-record-kind-control" id="compactRecordingKindControl" role="group" aria-label="Recording mode">
+                  <button class="compact-record-kind-button is-selected" id="compactRecordingKindVideoButton" type="button" data-recording-kind="video" data-tooltip-delay="90" aria-pressed="true" aria-label="Video + Audio" title="Video + Audio selected">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="6.5" width="12" height="11" rx="2.5"/><path d="m15.5 10 5-2.8v9.6l-5-2.8z"/></svg>
+                  </button>
+                  <button class="compact-record-kind-button" id="compactRecordingKindAudioButton" type="button" data-recording-kind="audio" data-tooltip-delay="90" aria-pressed="false" aria-label="Audio Only" title="Switch to Audio Only">
+                    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12v2M9 8v8M12 5v14M15 8v8M18 10v4"/></svg>
+                  </button>
+                </div>
+                <button class="compact-action-button compact-pause-action hidden" id="compactPauseButton" type="button" aria-keyshortcuts="Control+Alt+P Meta+Alt+P" aria-label="Pause recording" title="Pause recording"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="5" width="3.5" height="14" rx="1"/><rect x="13.5" y="5" width="3.5" height="14" rx="1"/></svg></button>
+                <button class="compact-action-button compact-bookmark-action hidden" id="compactBookmarkButton" type="button" aria-keyshortcuts="Control+Alt+B Meta+Alt+B" aria-label="Add bookmark" title="Add bookmark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5h10v15l-5-3.2-5 3.2Z"/></svg></button>
+                <button class="compact-action-button compact-record-action" id="compactStartButton" type="button" aria-keyshortcuts="Control+Alt+R Meta+Alt+R" aria-label="Start recording" title="Start recording"><span class="compact-record-button-dot" aria-hidden="true"></span><span>Start</span></button>
+              </div>
+            </div>
+            <div class="compact-live-audio" id="compactLiveAudio" aria-label="Live recording audio activity">
+              <div class="compact-live-meter" title="Microphone activity">
+                <span>Mic</span><span class="compact-meter-track"><i id="compactMicActivity"></i></span><small id="compactMicActivityLabel">Off</small>
+              </div>
+              <div class="compact-live-meter" title="System audio activity">
+                <span>System</span><span class="compact-meter-track"><i id="compactSystemActivity"></i></span><small id="compactSystemActivityLabel">Off</small>
+              </div>
+            </div>
+            <div class="compact-voice-highlights hidden" id="compactVoiceHighlights" aria-label="My voice highlights during recording">
+              <span class="compact-voice-label"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.8a3 3 0 0 0-3 3v5.1a3 3 0 0 0 6 0V6.8a3 3 0 0 0-3-3Z"/><path d="M6.8 11.4a5.2 5.2 0 0 0 10.4 0M12 16.6v3.2"/></svg><span>My voice</span></span>
+              <span class="voice-highlight-live-track" id="compactVoiceHighlightTrack" aria-hidden="true"></span>
+              <small id="compactVoiceHighlightCount">Live</small>
+            </div>
+            <div class="compact-ai-mini hidden" id="compactAiMiniStatus" aria-live="polite">
+              <span class="compact-ai-dot" aria-hidden="true"></span>
+              <span class="compact-ai-label" id="compactAiMiniLabel">Processing previous recording</span>
+              <strong id="compactAiMiniProgress"></strong>
+            </div>
+            <div class="compact-feedback hidden" id="compactFeedback" aria-live="polite"></div>
+            <div class="compact-status" id="compactStatus" aria-live="polite"></div>
+          </div>
+
+          <section class="result-panel capture-result-card hidden" id="resultPanel" aria-live="polite">
+            <div class="capture-result-main">
+              <span class="capture-result-icon" aria-hidden="true">✓</span>
+              <div class="capture-result-copy">
+                <strong>Recording complete</strong>
+                <span id="savedSummary">Your video was saved automatically.</span>
+              </div>
+              <div class="capture-result-actions">
+                <button class="button secondary small" id="showInFolder" type="button">Show in folder</button>
+                <button class="button secondary small" id="copySavedPath" type="button">Copy path</button>
+              </div>
+            </div>
+            <code id="savedPath" class="capture-result-path">Not saved yet</code>
+            <div id="saveWarning" class="warning hidden"></div>
+          </section>
+        </div>
+
+        <div id="playbackView" class="workspace-view hidden" role="tabpanel" aria-labelledby="playbackWorkspaceTab">
+          <div class="panel-heading playback-heading">
+            <div class="playback-heading-inline">
+              <div class="playback-heading-copy">
+                <h2>Playback</h2>
+                <p>Browse and review your recordings.</p>
+              </div>
+              <div class="playback-folder-pill" id="recordingsFolderPill" title="Recording folder">
+                <span>Recording folder</span>
+                <strong id="recordingsFolderLabel">Movies / Videos</strong>
+              </div>
+            </div>
+          </div>
+
+          <div class="playback-ai-status-slot" id="playbackAiStatusSlot" aria-label="Local AI processing"></div>
+
+          <div class="playback-layout">
+            <aside class="recording-browser">
+              <div class="recording-library-search">
+                <span class="search-icon" aria-hidden="true">⌕</span>
+                <input id="librarySearch" type="search" placeholder="Search recordings or transcript…" autocomplete="off" aria-label="Search recording library" />
+                <button id="clearLibrarySearch" class="search-clear hidden" type="button" aria-label="Clear recording search">×</button>
+              </div>
+              <div class="recording-quick-filters" role="group" aria-label="Quick recording filters">
+                <button class="recording-filter-chip active" type="button" data-library-filter="all" aria-pressed="true">All <span id="quickFilterAllCount">0</span></button>
+                <button class="recording-filter-chip" type="button" data-library-filter="video" aria-pressed="false">Video <span id="quickFilterVideoCount">0</span></button>
+                <button class="recording-filter-chip" type="button" data-library-filter="audio" aria-pressed="false">Audio <span id="quickFilterAudioCount">0</span></button>
+                <button class="recording-filter-chip" type="button" data-library-filter="favorites" aria-pressed="false">★ Favorites <span id="quickFilterFavoritesCount">0</span></button>
+              </div>
+              <div class="recording-organizer">
+                <label class="recording-filter-label">Category
+                  <select id="categoryFilter" aria-label="Filter recording categories">
+                    <option value="__all__">All categories</option>
+                  </select>
+                </label>
+                <div class="recording-organizer-actions">
+                  <button class="button secondary tiny" id="newCategoryButton" type="button">+ Category</button>
+                  <button class="button secondary tiny" id="batchSelectButton" type="button" aria-pressed="false">Select</button>
+                </div>
+              </div>
+              <div id="batchDeleteBar" class="batch-delete-bar hidden" aria-live="polite">
+                <label class="batch-select-all"><input id="batchSelectAll" type="checkbox" /> <span>Select visible</span></label>
+                <span id="batchSelectionSummary" class="batch-selection-summary">0 selected</span>
+                <button class="button danger tiny" id="batchDeleteSelected" type="button" disabled>Move to Trash</button>
+                <button class="button secondary tiny" id="batchCancelSelection" type="button">Done</button>
+              </div>
+              <div id="recordingList" class="recording-list">
+                <div class="empty">No recordings loaded yet.</div>
+              </div>
+            </aside>
+
+            <div id="playbackSplitter" class="playback-splitter" role="separator" aria-orientation="vertical" aria-label="Resize recording list and playback viewer" tabindex="0" title="Drag to resize the recording list and playback viewer"><span aria-hidden="true"></span></div>
+
+            <div class="playback-stage">
+              <div id="playbackEmpty" class="playback-empty">Select a recording to play it here.</div>
+              <div id="videoPlayerShell" class="video-player-shell hidden">
+                <div class="video-viewport">
+                  <video id="playbackVideo" playsinline preload="auto"></video>
+                  <div id="playbackMediaLoading" class="playback-media-loading hidden" aria-hidden="true"><span class="playback-media-loading-spinner"></span><span id="playbackMediaLoadingText">Loading video…</span></div>
+                  <div id="audioOnlyPlayerState" class="audio-only-player-state hidden" aria-hidden="true">
+                    <div class="audio-only-player-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 9v6"/><path d="M9 6v12"/><path d="M13 4v16"/><path d="M17 7v10"/><path d="M21 10v4"/></svg></div>
+                    <strong id="audioOnlyPlayerTitle">Audio recording</strong>
+                    <span id="audioOnlyPlayerMeta">Ready to play</span>
+                  </div>
+                  <div id="subtitleOverlay" class="subtitle-overlay hidden" aria-live="polite"></div>
+                  <div id="bookmarkMarkerOverlay" class="bookmark-marker-overlay hidden" role="status" aria-live="polite">
+                    <span class="bookmark-marker-symbol" aria-hidden="true">◆</span>
+                    <strong id="bookmarkMarkerOverlayLabel">Bookmark</strong>
+                    <time id="bookmarkMarkerOverlayTime">00:00</time>
+                  </div>
+                </div>
+                <div class="player-toolbar" aria-label="Video playback controls">
+                  <div class="player-status-row"><span id="playerStatus" class="player-status" aria-live="polite"></span></div>
+                  <div class="player-progress-row">
+                    <span id="playbackCurrentTime" class="player-time">00:00:00</span>
+                    <div class="waveform-timeline" id="waveformTimeline">
+                      <canvas id="playbackWaveform" class="waveform-canvas" aria-hidden="true"></canvas>
+                      <div id="playbackVoiceHighlightLayer" class="timeline-my-voice-layer hidden" aria-label="My voice highlighted sections"></div>
+                      <div id="playbackMarkerLayer" class="timeline-marker-layer" aria-label="Playback bookmark markers"></div>
+                      <div id="bookmarkInlineEditor" class="bookmark-inline-editor hidden" role="dialog" aria-label="Bookmark marker text">
+                        <input id="bookmarkInlineInput" type="text" maxlength="48" placeholder="Marker text" autocomplete="off" aria-label="Bookmark marker text" />
+                        <button id="bookmarkInlineSave" type="button" title="Save marker text" aria-label="Save bookmark marker text">✓</button>
+                      </div>
+                      <div id="waveformPlayhead" class="waveform-playhead" aria-hidden="true"></div>
+                      <input id="playbackProgress" class="player-progress waveform-progress" type="range" min="0" max="1000" step="1" value="0" aria-label="Playback position" title="Click anywhere on the waveform to seek" />
+                      <div id="timelineHoverPreview" class="timeline-hover-preview hidden" aria-hidden="true">
+                        <video id="timelinePreviewVideo" muted playsinline preload="metadata"></video>
+                        <strong id="timelineHoverTime">00:00</strong>
+                      </div>
+                    </div>
+                    <span id="playbackTotalTime" class="player-time">00:00:00</span>
+                  </div>
+                  <div class="player-control-row">
+                    <div class="player-control-group navigation-controls" aria-label="Clip and bookmark navigation">
+                      <button class="player-icon-button" id="previousClip" type="button" title="Previous recording" aria-label="Previous recording"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5v14"/><path d="m18 6-9 6 9 6z"/></svg></button>
+                      <span class="player-control-divider" aria-hidden="true"></span>
+                      <button class="player-icon-button bookmark-nav-button" id="previousBookmark" type="button" disabled title="Previous bookmark" aria-label="Previous bookmark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4.5h8v15l-4-2.5-4 2.5z"/><path d="m8 8-4 4 4 4"/><path d="M4.5 12H10"/></svg></button>
+                      <button class="player-icon-button bookmark-nav-button bookmark-add-button" id="addBookmarkPlayer" type="button" aria-keyshortcuts="B" disabled title="Add bookmark with marker text (B)" aria-label="Add bookmark at current position with marker text"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v18l-5-3-5 3z"/><path d="M12 7v6"/><path d="M9 10h6"/></svg></button>
+                      <button class="player-icon-button bookmark-nav-button bookmark-delete-button" id="deleteBookmarkPlayer" type="button" disabled title="Delete bookmark at current position" aria-label="Delete bookmark at current position"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v18l-5-3-5 3z"/><path d="m9.5 8.5 5 5"/><path d="m14.5 8.5-5 5"/></svg></button>
+                      <button class="player-icon-button bookmark-nav-button" id="nextBookmark" type="button" disabled title="Next bookmark" aria-label="Next bookmark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h8v15l-4-2.5-4 2.5z"/><path d="m16 8 4 4-4 4"/><path d="M14 12h5.5"/></svg></button>
+                      <span class="player-control-divider" aria-hidden="true"></span>
+                      <button class="player-icon-button" id="nextClip" type="button" title="Next recording" aria-label="Next recording"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 5v14"/><path d="m6 6 9 6-9 6z"/></svg></button>
+                    </div>
+                    <div class="player-control-group primary-transport-controls" aria-label="Primary playback controls">
+                      <button class="seek-button primary-seek-button" type="button" data-seek="-10" title="Back 10 seconds">−10</button>
+                      <button class="transport-play" id="playPausePlayback" type="button" aria-keyshortcuts="Space" title="Play / Pause (Space)" aria-label="Play"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="player-play-shape" d="m8 5 11 7-11 7z"/></svg></button>
+                      <button class="seek-button primary-seek-button" type="button" data-seek="10" title="Forward 10 seconds">+10</button>
+                    </div>
+                    <div class="player-control-group playback-tool-controls" aria-label="Playback tools">
+                      <div class="player-control-group fine-seek-wrap">
+                        <button class="player-icon-button fine-seek-toggle" id="seekOptionsToggle" type="button" title="More seek options" aria-label="More seek options" aria-expanded="false" aria-controls="seekOptionsMenu">±</button>
+                        <div id="seekOptionsMenu" class="seek-options-menu hidden" role="menu" aria-label="Additional seek intervals">
+                          <button type="button" data-seek="-30" role="menuitem">−30s</button>
+                          <button type="button" data-seek="-5" role="menuitem">−5s</button>
+                          <button type="button" data-seek="-1" role="menuitem">−1s</button>
+                          <button type="button" data-seek="1" role="menuitem">+1s</button>
+                          <button type="button" data-seek="5" role="menuitem">+5s</button>
+                          <button type="button" data-seek="30" role="menuitem">+30s</button>
+                        </div>
+                      </div>
+                      <button class="player-icon-button voice-highlight-toggle" id="toggleVoiceHighlights" type="button" disabled aria-pressed="false" title="My voice highlights unavailable" aria-label="My voice highlights unavailable"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.8a3 3 0 0 0-3 3v5.1a3 3 0 0 0 6 0V6.8a3 3 0 0 0-3-3Z"/><path d="M6.8 11.4a5.2 5.2 0 0 0 10.4 0M12 16.6v3.2"/></svg><span class="voice-highlight-button-count"></span></button>
+                      <button class="player-icon-button player-snapshot-button" id="snapshotPlayback" type="button" title="Save snapshot of current frame" aria-label="Save snapshot of current frame"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5h3l1.4-2h7.2l1.4 2h3a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9.5a2 2 0 0 1 2-2z"/><circle cx="12" cy="13.5" r="4"/></svg></button>
+                      <button class="player-caption-button cc-unavailable" id="playerSubtitleControl" type="button" disabled aria-pressed="false" title="Captions unavailable for this recording" aria-label="Captions unavailable for this recording"><span class="cc-player-icon" aria-hidden="true">CC</span></button>
+                    </div>
+                    <div class="right-player-controls" aria-label="Playback audio controls">
+                      <div class="player-control-group audio-controls">
+                        <button class="player-icon-button" id="playbackMute" type="button" aria-keyshortcuts="M" title="Mute / Unmute (M)" aria-label="Mute"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 10h3l4-4v12l-4-4H5z"/><path d="M15 9.5a4 4 0 0 1 0 5"/><path d="M17.5 7a7 7 0 0 1 0 10"/></svg></button>
+                        <input id="playbackVolume" class="volume-slider" type="range" min="0" max="1" step="0.05" value="1" aria-label="Playback volume" />
+                        <select id="playbackSpeed" class="player-speed" aria-label="Playback speed" title="Playback speed"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select>
+                        <button class="player-icon-button" id="playbackFullscreen" type="button" title="Full screen" aria-label="Full screen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5"/><path d="M15 4h5v5"/><path d="M20 15v5h-5"/><path d="M9 20H4v-5"/></svg></button>
+                      <button class="player-icon-button playback-timeline-toggle" id="toggleChapterSidebar" type="button" aria-pressed="false" disabled title="Show recording timeline" aria-label="Show recording timeline"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11"/><path d="M9 12h11"/><path d="M9 18h11"/><path d="M4 6h.01"/><path d="M4 12h.01"/><path d="M4 18h.01"/></svg></button>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <aside id="playbackChapterSidebar" class="playback-chapter-sidebar hidden" aria-label="Recording navigation">
+                  <div class="playback-chapter-sidebar-header">
+                    <div><strong>Recording timeline</strong><span>Bookmarks, your voice, and chapters</span></div>
+                    <button id="hideChapterSidebar" type="button" aria-label="Hide recording timeline" title="Hide recording timeline">×</button>
+                  </div>
+                  <div id="playbackChapterSidebarList" class="playback-chapter-sidebar-list"><span class="helper">No timeline items yet.</span></div>
+                </aside>
+              </div>
+
+              <div id="stickyPlaybackControls" class="sticky-playback-controls" aria-label="Sticky playback controls">
+                <button id="stickyPreviousBookmark" class="sticky-player-icon bookmark" type="button" title="Previous bookmark" aria-label="Previous bookmark">‹◆</button>
+                <button id="stickyAddBookmark" class="sticky-player-icon bookmark add" type="button" title="Add bookmark with marker text (B)" aria-label="Add bookmark at current position with marker text">◆+</button>
+                <button id="stickyDeleteBookmark" class="sticky-player-icon bookmark delete" type="button" disabled title="Delete bookmark at current position" aria-label="Delete bookmark at current position">◆−</button>
+                <button id="stickyNextBookmark" class="sticky-player-icon bookmark" type="button" title="Next bookmark" aria-label="Next bookmark">◆›</button>
+                <span class="sticky-control-divider" aria-hidden="true"></span>
+                <button id="stickySeekBack" class="sticky-player-button" type="button" title="Back 10 seconds">−10</button>
+                <button id="stickyPlayPause" class="sticky-player-play" type="button" title="Play / Pause (Space)" aria-label="Play / Pause">▶</button>
+                <button id="stickySeekForward" class="sticky-player-button" type="button" title="Forward 10 seconds">+10</button>
+                <span id="stickyPlaybackTime" class="sticky-player-time">00:00 / 00:00</span>
+                <input id="stickyPlaybackVolume" class="sticky-player-volume" type="range" min="0" max="1" step="0.05" value="1" aria-label="Playback volume" title="Volume (M toggles mute)" />
+              </div>
+
+              <div id="playbackDetails" class="hidden">
+                <div class="playback-title-row">
+                  <div class="playback-name-group"><strong id="playbackFileName">—</strong><button class="button secondary tiny" id="renamePlaybackFile" type="button">Rename</button></div>
+                  <div class="playback-badges"><span id="playbackMediaBadge" class="mini-badge">Video</span><span id="playbackDurationBadge" class="mini-badge">00:00</span><span id="playbackSizeBadge" class="mini-badge">—</span><span id="subtitleBadge" class="mini-badge hidden" aria-hidden="true">No transcript</span><span id="playbackProcessingBadge" class="mini-badge processing hidden" role="status" aria-live="polite">Ready</span></div>
+                </div>
+
+                <div class="playback-actions-row">
+                  <button class="button secondary small" id="openPlaybackTranscript" type="button" disabled>Transcript</button>
+                  <button class="button secondary small" id="showPlaybackFile" type="button">Show in folder</button>
+                  <select id="exportAudioFormat" class="audio-export-format" aria-label="Audio export format" title="Audio export format">
+                    <option value="mp3" selected>MP3</option>
+                    <option value="m4a">M4A</option>
+                  </select>
+                  <button class="button secondary small" id="exportPlaybackAudio" type="button">Export audio</button>
+                  <div class="playback-more-wrap">
+                    <button class="button secondary small playback-more-button" id="playbackMoreButton" type="button" aria-expanded="false" aria-controls="playbackMoreMenu">More ···</button>
+                    <div id="playbackMoreMenu" class="playback-more-menu hidden" role="menu">
+                      <button id="copyPlaybackPath" type="button" role="menuitem">Copy path</button>
+                      <button id="copyPlaybackTranscript" type="button" role="menuitem" disabled>Copy transcript</button>
+                      <button id="moreShowTranscriptFiles" type="button" role="menuitem" disabled>Show transcript file</button>
+                    </div>
+                  </div>
+                </div>
+
+
+                <section class="playback-transcript-section hidden" id="transcriptPanel">
+                  <div class="panel-heading transcript-heading">
+                    <div>
+                      <h2>Transcript & subtitles</h2>
+                    </div>
+                    <button class="button secondary small" id="showTranscriptFiles" type="button" disabled>Show transcript file</button>
+                  </div>
+                  <div class="transcript-view-toolbar">
+                    <span class="transcript-view-label">View</span>
+                    <div class="transcript-view-segmented" role="group" aria-label="Transcript display view">
+                      <button id="transcriptViewRaw" class="transcript-view-button active" type="button" data-transcript-view="raw" aria-pressed="true">Raw</button>
+                      <button id="transcriptViewSpeakers" class="transcript-view-button" type="button" data-transcript-view="speakers" aria-pressed="false">Speakers</button>
+                      <button id="transcriptViewTimecoded" class="transcript-view-button" type="button" data-transcript-view="timecoded" aria-pressed="false">Timecoded</button>
+                    </div>
+                    <span id="speakerDetectionStatus" class="speaker-detection-status" role="status" aria-live="polite">Speaker view is generated locally.</span>
+                  </div>
+                  <div id="speakerCorrectionPanel" class="speaker-correction-panel hidden" aria-label="Speaker correction tools"></div>
+                  <div class="transcript-status" id="transcriptStatus" role="status" aria-live="polite">Select a recording to view its transcript.</div>
+                  <div class="transcript-actions">
+                    <button class="button secondary" id="toggleTranscript" type="button" disabled>Hide transcript</button>
+                    <button class="button secondary" id="copyTranscript" type="button" disabled>Copy transcript</button>
+                    <button class="button secondary" id="exportTxt" type="button" disabled>Export TXT</button>
+                    <button class="button secondary" id="exportSrt" type="button" disabled>Export SRT</button>
+                  </div>
+                  <div class="transcript-search-sticky">
+                    <div class="transcript-search-row">
+                      <span class="search-icon" aria-hidden="true">⌕</span>
+                      <input id="transcriptSearch" type="search" aria-keyshortcuts="Control+F Meta+F" placeholder="Search transcript… ⌘/Ctrl+F · Enter = next" autocomplete="off" aria-label="Search transcript" title="Search transcript (⌘/Ctrl+F)" />
+                      <button id="clearTranscriptSearch" class="search-clear hidden" type="button" aria-label="Clear transcript search">×</button>
+                    </div>
+                    <div class="transcript-search-navigation" aria-label="Transcript search navigation">
+                      <span id="transcriptSearchCount" class="transcript-search-count">0 matches</span>
+                      <button id="transcriptSearchPrev" class="button secondary small" type="button" disabled>↑ Previous</button>
+                      <button id="transcriptSearchNext" class="button secondary small" type="button" disabled>↓ Next</button>
+                      <span class="transcript-search-hint">Click a row to play it · Space play/pause · B bookmark · M mute</span>
+                    </div>
+                  </div>
+                  <div id="transcriptSearchResults" class="transcript-search-results hidden"></div>
+                  <div id="transcriptDisplay">
+                    <textarea id="transcriptText" aria-label="Transcript text" class="transcript-raw-text hidden" rows="12" readonly spellcheck="false" aria-hidden="true" tabindex="-1"></textarea>
+                    <div id="transcriptSpeakerList" class="transcript-speaker-list" role="list" aria-label="Speaker-grouped read-only transcript"></div>
+                    <div id="transcriptCueList" class="transcript-cue-list hidden" role="list" aria-label="Timestamped read-only transcript"></div>
+                    <div id="transcriptRawView" class="transcript-raw-view hidden" role="document" aria-label="Raw continuous read-only transcript"></div>
+                  </div>
+                </section>
+
+                <section class="insights-panel" id="insightsPanel">
+                  <div class="insights-heading">
+                    <div class="knowledge-collapse-copy insights-title-copy"><strong>Chapters & meeting insights</strong><span>Generated locally from the fixed transcript. Click any timestamp to jump in the recording.</span></div>
+                    <div class="insights-heading-actions">
+                      <button class="button secondary small" id="copyAllInsights" type="button" disabled>Copy meeting notes</button>
+                      <button class="button secondary small" id="regenerateInsights" type="button" disabled>Regenerate</button>
+                    </div>
+                    <button class="knowledge-collapse-action-button" id="insightsPanelToggle" type="button" aria-expanded="true" aria-controls="insightsContent" aria-label="Collapse Chapters & meeting insights" title="Collapse Chapters & meeting insights">
+                      <span class="knowledge-collapse-label">Collapse</span><span class="knowledge-collapse-chevron" aria-hidden="true">⌃</span>
+                    </button>
+                  </div>
+                  <div id="insightsContent" class="insights-content">
+                    <div id="insightsStatus" class="helper" role="status" aria-live="polite">Transcript is required before chapters and meeting insights can be generated.</div>
+                    <div class="chapter-block insight-section-block">
+                      <div class="insight-subheading insight-subheading-stacked">
+                        <button class="knowledge-collapse-trigger insight-subsection-toggle" id="chaptersToggle" type="button" aria-expanded="true" aria-controls="chaptersContent">
+                          <span class="knowledge-collapse-copy"><strong>Chapters</strong><span>Topic-based navigation through the meeting.</span></span>
+                          <span class="knowledge-collapse-chevron" aria-hidden="true">⌃</span>
+                        </button>
+                      </div>
+                      <div id="chaptersContent" class="insight-collapsible-content"><div id="chapterList" class="chapter-list"><span class="helper">No chapters yet.</span></div></div>
+                    </div>
+                    <div class="insight-card meeting-summary-card">
+                      <div class="insight-subheading insight-subheading-stacked">
+                        <button class="knowledge-collapse-trigger insight-subsection-toggle" id="meetingSummaryToggle" type="button" aria-expanded="true" aria-controls="meetingSummaryContent">
+                          <span class="knowledge-collapse-copy"><strong>Meeting summary</strong><span>Decisions, outcomes, risks, and open questions only.</span></span>
+                          <span class="knowledge-collapse-chevron" aria-hidden="true">⌃</span>
+                        </button>
+                        <button class="button secondary tiny" id="copySummary" type="button" disabled>Copy</button>
+                      </div>
+                      <div id="meetingSummaryContent" class="insight-collapsible-content"><div id="meetingOverview" class="meeting-overview hidden"></div><div id="summaryList" class="summary-list"><span class="helper">No summary yet.</span></div></div>
+                    </div>
+                    <div class="insight-card action-items-card">
+                      <div class="insight-subheading insight-subheading-stacked">
+                        <button class="knowledge-collapse-trigger insight-subsection-toggle" id="actionItemsToggle" type="button" aria-expanded="true" aria-controls="actionItemsContent">
+                          <span class="knowledge-collapse-copy"><strong>Action items</strong><span>Explicit tasks and follow-ups, with owner/deadline only when stated.</span></span>
+                          <span class="knowledge-collapse-chevron" aria-hidden="true">⌃</span>
+                        </button>
+                        <button class="button secondary tiny" id="copyActionItems" type="button" disabled>Copy</button>
+                      </div>
+                      <div id="actionItemsContent" class="insight-collapsible-content"><div id="actionItemList" class="action-item-list"><span class="helper">No action items yet.</span></div></div>
+                    </div>
+                  </div>
+                </section>
+
+                <div class="trim-panel">
+                  <div class="trim-heading"><strong>Trim recording</strong><span>Drag the start/end handles or use the current playhead. The original remains unchanged.</span></div>
+                  <div class="trim-precision-controls">
+                    <label class="trim-zoom-control"><span>Waveform zoom</span><input id="trimZoom" type="range" min="1" max="12" step="1" value="1" /><output id="trimZoomValue">1×</output></label>
+                    <label class="trim-snap-control"><input id="trimSnapSilence" type="checkbox" checked /><span>Snap handles to nearby silence</span></label>
+                  </div>
+                  <div class="trim-zoom-viewport" id="trimZoomViewport">
+                    <div class="trim-range-shell" id="trimRangeShell">
+                      <canvas id="trimWaveform" class="trim-waveform" aria-hidden="true"></canvas>
+                      <div class="trim-range-base"></div>
+                      <div class="trim-selection-fill" id="trimSelectionFill"></div>
+                      <div class="trim-playhead" id="trimPlayhead"></div>
+                      <div id="cutSegmentOverlay" class="cut-segment-overlay" aria-hidden="true"></div>
+                      <button id="trimStartHandle" class="trim-handle trim-handle-start" type="button" aria-label="Trim start handle" title="Drag trim start"></button>
+                      <button id="trimEndHandle" class="trim-handle trim-handle-end" type="button" aria-label="Trim end handle" title="Drag trim end"></button>
+                    </div>
+                  </div>
+                  <div class="trim-controls trim-controls-aligned">
+                    <div class="trim-boundary-control"><button class="button secondary small" id="setTrimStart" type="button">Current → Start</button><code id="trimStartValue">00:00:00.000</code></div>
+                    <div class="trim-boundary-control"><button class="button secondary small" id="setTrimEnd" type="button">Current → End</button><code id="trimEndValue">End</code></div>
+                    <button class="button primary small trim-save-button" id="saveTrimmedCopy" type="button">Save trimmed copy</button>
+                  </div>
+                  <div id="trimStatus" class="helper" role="status" aria-live="polite"></div>
+
+                  <div class="multi-cut-editor">
+                    <div class="multi-cut-heading">
+                      <div><strong>Remove multiple sections</strong><span>Use the trim handles to select an unwanted section, then add it to the cut list.</span></div>
+                      <span class="edit-safety-badge" title="Editing never overwrites the original recording">Original protected</span>
+                    </div>
+                    <div class="multi-cut-actions">
+                      <button class="button secondary small" id="addCutSegment" type="button">+ Add selected range</button>
+                      <button class="button secondary small" id="clearCutSegments" type="button" disabled>Clear cuts</button>
+                      <button class="button primary small" id="saveMultiCutCopy" type="button" disabled>Save cleaned copy</button>
+                    </div>
+                    <div id="cutSegmentList" class="cut-segment-list"><span class="helper">No sections marked for removal.</span></div>
+                    <div id="cutSummary" class="edit-summary">Original remains unchanged. Add one or more cut ranges to create a cleaned copy.</div>
+                  </div>
+                </div>
+
+                <pre id="playbackTranscriptPreview" class="transcript-preview hidden"></pre>
+
+
+              </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <div class="record-right-rail" id="recordRightRail">
+        <aside class="panel recording-controls-panel" id="recordingControlsPanel">
+          <div class="recording-controls-title">
+            <div><span class="settings-kicker">CAPTURE</span><h2>Recording Controls</h2></div>
+          </div>
+          <div class="readiness-card" id="readinessStrip" aria-label="Pre-recording readiness">
+            <div class="readiness-summary ready" id="readinessSummary" role="status" aria-live="polite">
+              <span class="readiness-summary-icon" aria-hidden="true">✓</span>
+              <div><strong id="readinessSummaryTitle">Ready to record</strong><span id="readinessSummaryText">All required checks passed.</span></div>
+            </div>
+            <div class="readiness-details">
+              <div class="readiness-item" id="readySource"><span class="readiness-dot"></span><span>Source</span><strong>Checking…</strong></div>
+              <div class="readiness-item" id="readyMic"><span class="readiness-dot"></span><span>Microphone</span><strong>Checking…</strong></div>
+              <div class="readiness-item" id="readyAudio"><span class="readiness-dot"></span><span>Audio</span><strong>On</strong></div>
+              <div class="readiness-item" id="readyCamera"><span class="readiness-dot"></span><span>Camera</span><strong>Off</strong></div>
+              <div class="readiness-item readiness-storage" id="readyStorage"><span class="readiness-dot"></span><span>Storage</span><strong>Checking…</strong></div>
+            </div>
+          </div>
+          <div class="readiness-warning hidden" id="readinessWarning" role="status">
+            <span id="readinessWarningText"></span>
+            <button class="button secondary tiny recovery-stop-button hidden" id="cancelRecoveryButton" type="button">Stop recovery</button>
+          </div>
+          <div class="record-quick-controls" id="recordQuickControls" role="group" aria-label="Quick recording controls">
+            <div class="record-quick-section record-mode-quick-section">
+              <div class="record-quick-heading"><strong>Recording mode</strong><span>One-click selection</span></div>
+              <input type="hidden" id="recordingKind" value="video" />
+              <div class="apple-segmented-control" id="recordingKindQuickControl" role="group" aria-label="Recording mode">
+                <button class="apple-segment-button is-selected" id="recordingKindVideoButton" type="button" data-recording-kind="video" aria-pressed="true" title="Record video and audio">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="6.5" width="12" height="11" rx="2.5"/><path d="m15.5 10 5-2.8v9.6l-5-2.8z"/></svg>
+                  <span>Video + Audio</span>
+                </button>
+                <button class="apple-segment-button" id="recordingKindAudioButton" type="button" data-recording-kind="audio" aria-pressed="false" title="Record audio only">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12v2M9 8v8M12 5v14M15 8v8M18 10v4"/></svg>
+                  <span>Audio Only</span>
+                </button>
+              </div>
+            </div>
+            <div class="record-quick-divider" aria-hidden="true"></div>
+            <div class="record-quick-section record-webcam-quick-section">
+              <button class="apple-setting-row" id="webcamQuickToggle" type="button" aria-pressed="false" aria-controls="webcamSettings" title="Turn webcam overlay on">
+                <span class="apple-setting-icon" aria-hidden="true"><svg viewBox="0 0 24 24"><rect x="3.5" y="6.5" width="12" height="11" rx="2.5"/><path d="m15.5 10 5-2.8v9.6l-5-2.8z"/></svg></span>
+                <span class="apple-setting-copy"><strong>Webcam overlay</strong><small id="webcamQuickDetail">Add your camera on top of the recording</small></span>
+                <span class="apple-switch" aria-hidden="true"><span></span></span>
+              </button>
+              <input class="quick-control-proxy" type="checkbox" id="webcamOverlay" aria-hidden="true" tabindex="-1" />
+              <div id="webcamSettings" class="quick-webcam-settings hidden">
+                <label>
+                  <span class="field-label">Camera</span>
+                  <select id="cameraDevice" aria-label="Webcam device"><option value="default">System default</option></select>
+                </label>
+                <div class="two-col settings-grid quick-webcam-grid">
+                  <label><span class="field-label">Position</span><select id="webcamPosition"><option value="bottom-right" selected>Bottom right</option><option value="bottom-left">Bottom left</option><option value="top-right">Top right</option><option value="top-left">Top left</option></select></label>
+                  <label><span class="field-label">Size</span><select id="webcamSize"><option value="small">Small</option><option value="medium" selected>Medium</option><option value="large">Large</option></select></label>
+                </div>
+                <label>
+                  <span class="field-label">Shape</span>
+                  <select id="webcamShape" aria-label="Webcam overlay shape"><option value="rounded" selected>Rounded rectangle</option><option value="circle">Circle</option></select>
+                </label>
+              </div>
+            </div>
+          </div>
+          <div class="record-live-audio-check" id="recordLiveAudioCheck" aria-label="Audio status">
+            <div class="record-live-audio-heading"><strong>Audio check</strong><span>Mic starts when recording begins; system level becomes live during capture.</span></div>
+            <div class="record-live-audio-row" id="preflightMicRow">
+              <div class="record-live-audio-label record-live-audio-label-with-action">
+                <span>Mic</span>
+                <button class="record-mic-mute-button" id="preflightMicMuteButton" type="button" aria-pressed="false" aria-label="Mute microphone" title="Mute microphone">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="9" y="3.5" width="6" height="11" rx="3"/><path d="M6.5 11.5a5.5 5.5 0 0 0 11 0M12 17v3M9 20h6"/></svg>
+                  <span class="record-mic-mute-slash" aria-hidden="true"></span>
+                </button>
+              </div>
+              <div class="record-live-meter" aria-hidden="true"><span class="record-live-meter-fill" id="preflightMicMeter"></span></div>
+              <strong class="record-live-audio-state" id="preflightMicLevel">On</strong>
+            </div>
+            <div class="record-live-audio-row" id="preflightSystemRow" title="System/application audio level becomes live from the actual capture stream after recording starts.">
+              <span class="record-live-audio-label">System</span>
+              <div class="record-live-meter system" aria-hidden="true"><span class="record-live-meter-fill" id="preflightSystemMeter"></span></div>
+              <strong class="record-live-audio-state" id="preflightSystemLevel">Ready</strong>
+            </div>
+          </div>
+          <div class="record-ready-summary-line ready" id="recordReadySummaryLine" aria-live="polite">
+            <span class="record-ready-summary-icon" id="recordReadySummaryIcon" aria-hidden="true">✓</span>
+            <span id="recordReadySummaryText">Preparing recording summary…</span>
+          </div>
+          <div class="record-destination-line" id="recordDestinationLine">
+            <span class="record-destination-copy"><span>Saving to</span><strong id="recordDestinationLabel">Movies / PulseStudio</strong></span>
+            <button class="record-destination-change" id="recordDestinationChange" type="button">Change</button>
+          </div>
+          <div class="recording-primary-row">
+            <div class="recording-duration hidden" id="recordingDurationBox">
+              <span class="record-dot"></span>
+              <span>Duration</span>
+              <strong id="recordingDuration">00:00:00</strong>
+            </div>
+            <button class="button record recording-main-button" id="startButton" type="button" aria-keyshortcuts="Control+Alt+R Meta+Alt+R">● Start recording</button>
+          </div>
+          <div class="recording-ai-status-slot" id="recordingAiStatusSlot" aria-label="Local AI processing">
+            <div class="ai-status-center hidden" id="aiStatusCenter" role="status" aria-live="polite">
+              <span class="ai-status-dot" aria-hidden="true"></span>
+              <span class="ai-status-copy"><strong id="aiStatusLabel">Local AI</strong><small class="ai-status-file hidden" id="aiStatusFile"></small><small id="aiStatusDetail">Idle</small><small class="ai-status-hint hidden" id="aiStatusHint"></small></span>
+              <span class="ai-progress-track" id="aiProgressTrack" role="progressbar" aria-label="AI processing progress" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><span id="aiProgressFill" class="ai-progress-fill"></span></span>
+              <button class="ai-cancel-button" id="cancelAiJob" type="button" title="Cancel the current local AI task" aria-label="Cancel current local AI task">Cancel</button>
+            </div>
+          </div>
+          <div class="primary-recording-actions recording-secondary-actions">
+            <button class="recording-live-mic-toggle hidden" id="recordingMicToggle" type="button" aria-pressed="false" aria-label="Mute microphone" title="Mute microphone">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path class="recording-live-mic-body" d="M12 3.8a3 3 0 0 0-3 3v5.1a3 3 0 0 0 6 0V6.8a3 3 0 0 0-3-3Z"/><path class="recording-live-mic-stand" d="M6.8 11.4a5.2 5.2 0 0 0 10.4 0M12 16.6v3.2M9.2 19.8h5.6"/><path class="recording-live-mic-slash" d="M5 5l14 14"/></svg>
+            </button>
+            <button class="button secondary hidden" id="pausePrimaryButton" type="button" aria-keyshortcuts="Control+Alt+P Meta+Alt+P">Pause</button>
+            <button class="button secondary hidden" id="bookmarkPrimaryButton" type="button" aria-keyshortcuts="Control+Alt+B Meta+Alt+B" title="Add bookmark (⌘/Ctrl+Alt+B)">◆ Bookmark</button>
+          </div>
+          <div class="recording-voice-highlights hidden" id="recordingVoiceHighlights" aria-label="My voice highlights during recording">
+            <div class="recording-voice-highlight-heading">
+              <span class="recording-voice-highlight-title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.8a3 3 0 0 0-3 3v5.1a3 3 0 0 0 6 0V6.8a3 3 0 0 0-3-3Z"/><path d="M6.8 11.4a5.2 5.2 0 0 0 10.4 0M12 16.6v3.2"/></svg><strong>My voice</strong><span>Read-only detection — recording audio is unchanged</span></span>
+              <small id="recordingVoiceHighlightCount">Listening</small>
+            </div>
+            <div class="voice-highlight-live-track full" id="recordingVoiceHighlightTrack" aria-hidden="true"></div>
+          </div>
+          <div class="recording-active-ai-status-slot" id="recordingActiveAiStatusSlot" aria-label="Background processing from previous recordings"></div>
+          <div class="recovery-notice hidden" id="recoveryNotice" role="status" aria-live="polite">
+            <span class="recovery-notice-icon" aria-hidden="true">↻</span>
+            <div class="recovery-notice-copy"><strong id="recoveryNoticeTitle">Unfinished recording found</strong><span id="recoveryNoticeDetail">Your recording data is safe.</span></div>
+            <div class="recovery-notice-actions">
+              <button class="button primary small" id="retryRecovery" type="button">Recover</button>
+              <button class="button secondary small" id="showRecoveryFiles" type="button">Files</button>
+              <button class="icon-button recovery-dismiss" id="dismissRecoveryNotice" type="button" aria-label="Dismiss recovery message" title="Dismiss">×</button>
+            </div>
+          </div>
+          <div class="shortcut-hint full-only">Global: ⌘/Ctrl+Alt+R Record · P Pause · B Bookmark · S Snapshot · M Mini Controller · F1 Shortcuts</div>
+        </aside>
+
+        <aside class="panel settings-panel" id="settingsPanel">
+          <button class="settings-title settings-collapse-button" id="settingsCollapseButton" type="button" aria-expanded="true" aria-controls="settingsContent">
+            <div><span class="settings-kicker">RECORDING</span><h2>Recording setup</h2><small class="panel-title-helper">Audio and video quality for this recording</small></div>
+            <span class="settings-collapse-icon" aria-hidden="true">⌃</span>
+          </button>
+
+          <div id="settingsContent" class="settings-content">
+            <section class="record-settings-group record-audio-group" aria-labelledby="recordAudioSettingsHeading">
+              <div class="record-settings-group-heading">
+                <div><span class="record-section-kicker">AUDIO</span><strong id="recordAudioSettingsHeading">Audio</strong><span>Choose what you want to hear in the finished recording.</span></div>
+              </div>
+
+              <div class="toggle-row" title="Record sound played by the computer. Use Selected application only when you want audio from one chosen app/window.">
+                <div>
+                  <strong>System audio</strong>
+                  <span>Record sound from apps and your computer</span>
+                </div>
+                <input type="checkbox" id="systemAudio" aria-label="Record system audio" checked />
+              </div>
+
+              <div id="computerAudioSettings" class="nested">
+                <label class="field-label">System audio source</label>
+                <select id="computerAudioMode" title="Record all system audio, or only the selected application window.">
+                  <option value="system" selected>All system audio</option>
+                  <option value="application">Selected application only</option>
+                </select>
+                <p class="helper" id="applicationAudioHint">Application-only audio requires a selected window. macOS uses ScreenCaptureKit; Windows uses WASAPI process-loopback for the selected process tree.</p>
+              </div>
+
+              <div class="toggle-row" title="Record your microphone as a separate recoverable track so speech can be protected during cleanup.">
+                <div>
+                  <strong>Microphone</strong>
+                  <span>Add your voice as a separate, recoverable input</span>
+                </div>
+                <input type="checkbox" id="microphone" aria-label="Record microphone" checked />
+              </div>
+
+              <div id="micSettings" class="nested">
+                <label class="field-label">Microphone device</label>
+                <select id="microphoneDevice" title="Choose the microphone used for your voice."><option value="default">System default</option></select>
+
+                <label class="field-label">Noise removal</label>
+                <select id="noiseReduction" title="Enhanced is recommended for normal rooms. Strong targets unusually loud fan/air noise while retaining a source microphone safety track.">
+                  <option value="off">Off</option>
+                  <option value="standard">Standard</option>
+                  <option value="enhanced" selected>Enhanced voice · recommended</option>
+                  <option value="strong">Strong · loud fan / air noise</option>
+                </select>
+                <p class="helper">Enhanced and Strong preserve a source microphone track first, then use local neural fan/noise suppression plus speech-safe cleanup. Use Strong only when fan or air noise is unusually loud.</p>
+              </div>
+            </section>
+
+            <section class="record-settings-group record-quality-group" aria-labelledby="recordQualitySettingsHeading">
+              <div class="record-settings-group-heading">
+                <div><span class="record-section-kicker">QUALITY</span><strong id="recordQualitySettingsHeading">Quality</strong><span>Video quality applies when Video + Audio is selected above.</span></div>
+              </div>
+              <div class="two-col settings-grid">
+                <label>
+                  <span class="field-label">Video quality</span>
+                  <select id="quality" title="1080p is recommended for most meetings and tutorials. Higher resolutions create larger recordings.">
+                    <option value="720">720p</option>
+                    <option value="1080" selected>1080p</option>
+                    <option value="1440">1440p</option>
+                    <option value="native">Native</option>
+                  </select>
+                </label>
+                <label>
+                  <span class="field-label">Frame rate</span>
+                  <select id="frameRate" title="30 FPS is recommended for most meetings and tutorials. 60 FPS is smoother but uses more storage and processing power.">
+                    <option value="15">15 FPS · smallest</option>
+                    <option value="25">25 FPS · efficient</option>
+                    <option value="30" selected>30 FPS · standard</option>
+                    <option value="60">60 FPS · smooth</option>
+                  </select>
+                </label>
+                <label>
+                  <span class="field-label">Video codec</span>
+                  <select id="videoCodec" title="H.264 is the safest choice for compatibility. H.265 usually creates smaller files; hardware encoding is chosen automatically when available.">
+                    <option value="h264" selected>H.264 · compatible</option>
+                    <option value="h265">H.265 / HEVC · smaller files</option>
+                  </select>
+                </label>
+                <div class="recording-size-estimate settings-grid-span" id="recordingSizeEstimate" aria-live="polite" title="The app automatically uses a tested hardware encoder when available and falls back safely to software encoding.">Estimated size: calculating…</div>
+                <div class="recording-storage-health settings-grid-span" id="recordingStorageHealth" aria-live="polite">Storage: checking free space…</div>
+              </div>
+            </section>
+
+          </div>
+        </aside>
+
+        <aside class="panel settings-panel record-secondary-panel" id="recordAdvancedPanel">
+          <button class="settings-title settings-collapse-button" id="recordAdvancedToggle" type="button" aria-expanded="false" aria-controls="recordAdvancedContent">
+            <div><span class="settings-kicker">OPTIONS</span><h2>Recording options</h2><small class="panel-title-helper">Output, countdown and cursor</small></div>
+            <span class="settings-collapse-icon" aria-hidden="true">⌄</span>
+          </button>
+          <div id="recordAdvancedContent" class="settings-content record-secondary-content hidden">
+                <div class="settings-subsection output-settings">
+                  <div class="field-label">Output</div>
+                  <label>
+                    <span class="field-label">Filename style</span>
+                    <select id="filenameStyle" title="Choose a friendly automatic name, a sortable timestamp, or your own template.">
+                      <option value="friendly" selected>Friendly · Screen Recording date/time</option>
+                      <option value="timestamp">Sortable timestamp</option>
+                      <option value="custom">Custom template</option>
+                    </select>
+                  </label>
+                  <label id="filenameTemplateRow" class="hidden">
+                    <span class="field-label">Custom filename template</span>
+                    <input id="filenameTemplate" type="text" value="Screen Recording {date} {time}" maxlength="180" spellcheck="false" />
+                  </label>
+                  <p class="helper"><span id="filenameTemplateHelp">Friendly names are generated automatically.</span> Preview: <strong id="filenamePreview">Screen Recording YYYY-MM-DD HH-MM-SS.mp4</strong></p>
+                  <div class="recording-folder-setting">
+                    <div class="recording-folder-copy">
+                      <span class="field-label">Recording folder</span>
+                      <code id="recordingFolderPath">Movies/Videos</code>
+                    </div>
+                    <div class="recording-folder-actions">
+                      <button class="button secondary small" id="changeRecordingFolder" type="button">Change…</button>
+                      <button class="button secondary small" id="resetRecordingFolder" type="button">Use default</button>
+                    </div>
+                  </div>
+                  <p class="helper">New recordings, snapshots, trims, and audio exports are saved here. Changing the folder does not move existing files.</p>
+                </div>
+
+                <div class="settings-subsection full-only">
+                  <div class="field-label">Recording assistance</div>
+                  <label class="advanced-select-row" title="Optional delay after capture setup is ready. Useful when you need a moment to switch back to the app or presentation you want to record.">
+                    <span><strong>Countdown before recording</strong><small>Give yourself a moment before capture begins</small></span>
+                    <select id="recordCountdown" aria-label="Countdown before recording">
+                      <option value="0" selected>Off</option>
+                      <option value="3">3 seconds</option>
+                      <option value="5">5 seconds</option>
+                    </select>
+                  </label>
+                  <div class="toggle-row compact">
+                    <div><strong>Show cursor</strong><span>Include the mouse pointer in the recording</span></div>
+                    <input type="checkbox" id="showCursor" aria-label="Show mouse cursor in recording" checked />
+                  </div>
+                  <div class="toggle-row compact">
+                    <div><strong>Highlight mouse</strong><span>Draw a visible ring around the pointer</span></div>
+                    <input type="checkbox" id="highlightCursor" aria-label="Highlight mouse clicks" />
+                  </div>
+                  <div class="toggle-row compact">
+                    <div><strong>Show keystrokes</strong><span>Overlay recent keyboard shortcuts/keys</span></div>
+                    <input type="checkbox" id="showKeystrokes" aria-label="Show keystrokes in recording" />
+                  </div>
+                </div>
+
+                <div class="permission-box" id="permissionBox" role="status" aria-live="polite"><span class="permission-icon" aria-hidden="true">✓</span><span>Permissions are checked when recording starts.</span></div>
+                <div class="autosave-note full-only"><span class="autosave-icon" aria-hidden="true">↘</span><div>Auto-save: <strong id="autosaveFolder">Movies/Videos</strong><br /><span id="autosavePattern">Uses the filename template above</span></div></div>
+          </div>
+        </aside>
+
+        <aside class="panel settings-panel record-secondary-panel full-only" id="appToolsPanel">
+          <button class="settings-title settings-collapse-button" id="appToolsToggle" type="button" aria-expanded="false" aria-controls="appToolsContent">
+            <div><span class="settings-kicker">APP &amp; AI</span><h2>App &amp; AI tools</h2><small class="panel-title-helper">AI models, diagnostics, updates and recovery</small></div>
+            <span class="settings-collapse-icon" aria-hidden="true">⌄</span>
+          </button>
+          <div id="appToolsContent" class="settings-content record-secondary-content hidden">
+            <div class="settings-subsection app-privacy-settings">
+              <div class="field-label">Screen sharing privacy</div>
+              <button class="apple-setting-row app-privacy-toggle is-on" id="windowCapturePrivacyToggle" type="button" aria-pressed="true">
+                <span class="apple-setting-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M12 3.5 19 6v5.2c0 4.5-2.8 7.7-7 9.3-4.2-1.6-7-4.8-7-9.3V6z"/><path d="m8.8 12 2.1 2.1 4.5-4.7"/></svg>
+                </span>
+                <span class="apple-setting-copy"><strong>Hide PulseStudio from screen sharing &amp; screenshots</strong><small id="windowCapturePrivacyDetail">On — compatible screen shares and screenshots should hide this window.</small></span>
+                <span class="apple-switch" aria-hidden="true"><span></span></span>
+              </button>
+              <p class="helper app-privacy-helper">Use this during calls when you do not want other people to see the PulseStudio window. Turn it off when you intentionally want to capture or share this app. Operating-system and sharing-app support can vary.</p>
+            </div>
+            <div class="voice-enrollment-card" id="voiceEnrollmentCard">
+              <div class="voice-enrollment-copy"><strong>My Voice profile</strong><span id="voiceEnrollmentStatus">Optional · improves My Voice and speaker matching without changing recorded audio.</span></div>
+              <div class="voice-enrollment-actions">
+                <button class="button secondary small" id="voiceEnrollButton" type="button">Enroll my voice…</button>
+                <button class="button secondary small hidden" id="voiceClearButton" type="button">Remove profile</button>
+              </div>
+              <div class="voice-enrollment-progress hidden" id="voiceEnrollmentProgress" aria-live="polite"><span><i id="voiceEnrollmentProgressFill"></i></span><strong id="voiceEnrollmentCountdown">15s</strong></div>
+              <p class="helper">Speak naturally for about 15 seconds. Only a local voice signature is kept; the enrollment audio is deleted after processing.</p>
+            </div>
+            <div class="app-tools-actions">
+              <button class="button secondary small" id="openModelManager" type="button">Manage AI Models…</button>
+              <button class="button secondary small" id="openDiagnostics" type="button">App Diagnostics…</button>
+              <button class="button primary small" id="exportDiagnosticsQuick" type="button">Export Diagnostics ZIP</button>
+            </div>
+            <p class="helper app-tools-helper">Manage local AI storage, inspect app health, and review update/recovery status. These tools do not change normal recording settings.</p>
+          </div>
+        </aside>
+      </div>
+
+      <section class="panel recorder-panel hidden" id="recorderPanel">
+        <div class="recorder-toolbar">
+          <div class="recording-state"><span class="record-dot"></span><span>Recording</span><span id="timer">00:00:00</span><span id="recordingHealthBadge" class="recording-health-badge hidden" role="status" aria-live="polite"><i aria-hidden="true"></i><span id="recordingHealthText">Healthy</span></span></div>
+          <div class="recorder-actions">
+            <button class="button secondary" id="snapshotRecording" type="button" aria-keyshortcuts="Control+Alt+S Meta+Alt+S">📷 Snapshot</button>
+            <button class="button secondary" id="bookmarkRecording" type="button">◆ Bookmark</button>
+            <button class="button secondary" id="pauseButton" type="button">Pause</button>
+            <button class="button stop" id="stopButton" type="button">■ Stop recording</button>
+          </div>
+        </div>
+        <video id="preview" autoplay muted playsinline></video>
+        <div class="meter-row">
+          <span>Audio level</span>
+          <div class="meter"><div id="audioMeter" class="meter-fill"></div></div>
+        </div>
+      </section>
+
+
+    </main>
+
+    <div id="recordingBookmarkTextEditor" class="recording-bookmark-text-editor hidden" role="dialog" aria-label="Recording bookmark marker text">
+      <span class="recording-bookmark-editor-symbol" aria-hidden="true">◆</span>
+      <span class="recording-bookmark-editor-label">Bookmark added ·</span>
+      <time id="recordingBookmarkTextTime">00:00</time>
+      <input id="recordingBookmarkTextInput" type="text" maxlength="48" placeholder="Marker text (optional)" autocomplete="off" aria-label="Recording bookmark marker text" />
+      <button id="recordingBookmarkTextSave" type="button" title="Save marker text" aria-label="Save bookmark marker text">Save</button>
+    </div>
+  </div>
+
+  <dialog id="regionDialog" class="modal region-modal">
+    <div class="modal-header"><h2>Select recording region</h2><button class="modal-close" data-close-dialog="regionDialog" type="button" aria-label="Close region selection">×</button></div>
+    <div class="modal-body">
+      <p>Drag over the source preview to choose the area that will be recorded.</p>
+      <div id="regionStage" class="region-stage">
+        <img id="regionImage" alt="Selected capture source preview" />
+        <div id="regionSelection" class="region-selection hidden"></div>
+      </div>
+      <div id="regionDialogSummary" class="helper">Drag to select an area.</div>
+    </div>
+    <div class="modal-footer">
+      <button class="button secondary" id="clearRegion" type="button">Clear</button>
+      <button class="button primary" id="applyRegion" type="button" disabled>Use this region</button>
+    </div>
+  </dialog>
+
+  <dialog id="categoryDialog" class="modal category-modal">
+    <div class="modal-header"><h2>New recording category</h2><button class="modal-close" data-close-dialog="categoryDialog" type="button" aria-label="Close category dialog">×</button></div>
+    <div class="modal-body">
+      <p>Create a section for organizing recordings in the Playback list.</p>
+      <label class="category-dialog-field"><span>Category name</span><input id="categoryNameInput" type="text" maxlength="60" placeholder="e.g. Meetings, Demos, Training" /></label>
+      <div id="categoryDialogStatus" class="helper"></div>
+    </div>
+    <div class="modal-footer">
+      <button class="button secondary" data-close-dialog="categoryDialog" type="button">Cancel</button>
+      <button class="button primary" id="createCategoryConfirm" type="button">Create category</button>
+    </div>
+  </dialog>
+
+
+
+
+  <dialog id="helpDialog" class="modal">
+    <div class="modal-header"><h2>Help</h2><button class="modal-close" data-close-dialog="helpDialog" type="button" aria-label="Close Help">×</button></div>
+    <div class="modal-body">
+      <h3>Record a screen or window</h3>
+      <ol>
+        <li>Open <strong>Choose what to record</strong> and select a screen/window thumbnail.</li>
+        <li>Choose capture mode (screen/window, region, or all displays). In Recording Controls, select Video + Audio or Audio Only with one click and turn Webcam overlay on or off with the Apple-style switch. Microphone is enabled by default; use the mic icon beside Mic in Audio check for a quick mute/unmute before recording. Use Recording setup for audio/video quality and Recording options for filename, folder, countdown, cursor, and keystrokes. Microphone noise removal defaults to Enhanced voice with adaptive fan/air removal; use Strong when the fan or air flow is very loud.</li>
+        <li>Click <strong>Start recording</strong>. While recording, use <strong>Pause/Resume</strong> to temporarily stop capture and continue in the same output, or <strong>Stop recording</strong> to finish.</li>
+        <li>Video recordings save as MP4 and audio-only recordings save as M4A. New media saves to the selected Recording folder; the default is Movies on macOS or Videos on Windows.</li>
+      </ol>
+      <h3>Readiness</h3><p>Before recording, check the readiness strip above Recording Controls. It flags missing sources/regions, microphone/camera permissions, system-audio mode, and low recording-folder storage.</p>
+      <h3>Audio-only recording</h3><p>Choose <strong>Audio Only</strong> in the Recording Controls mode switch when you do not need video. Microphone and system audio continue to work, while video-only quality, FPS, cursor, keystroke, and webcam controls are disabled.</p>
+      <h3>Filename templates</h3><p>Use tokens <strong>{date}</strong>, <strong>{time}</strong>, <strong>{datetime}</strong>, <strong>{source}</strong>, <strong>{mode}</strong>, and <strong>{type}</strong>. The filename preview updates before recording and duplicate names are made unique automatically.</p>
+      <h3>Webcam overlay</h3><p>In Recording Controls, click the <strong>Webcam overlay</strong> switch to add or remove your camera with one click. When enabled, choose its camera, position, size, and circular or rounded shape directly beneath the switch.</p>
+      <h3>Recording recovery</h3><p>Active recording chunks and session metadata are journaled while recording. If the app exits before Stop is pressed, relaunch PulseStudio; the unfinished source stays protected and a compact <strong>Recover</strong> option appears. Recovery runs only when you choose Recover, can be stopped, and never blocks a new recording.</p>
+      <h3>Selected-application audio</h3><p>Choose a window thumbnail and select <strong>Selected application only</strong> under System audio. On macOS this uses ScreenCaptureKit. On supported 64-bit Windows builds it uses WASAPI process-loopback and captures the selected process plus child processes while excluding unrelated application audio.</p>
+      <h3>Snapshots, bookmarks & editing</h3><p>Use <strong>Snapshot</strong> while recording or the camera button in Playback. Use <strong>Bookmark</strong> while recording to mark an important moment. Playback shows bookmarks as timeline markers and provides Previous / Add / Delete / Next bookmark controls in the player toolbar. Single-click Add for a quick marker; double-click Add to type a short keyword or note directly above that marker. Named markers stay visible on the waveform, appear briefly over the video when playback reaches them, and can be double-clicked on the waveform to edit their text. Snapshots save beside recordings. For a simple trim, adjust the waveform-backed start/end handles and save a trimmed copy. To remove several unwanted sections, select each range, choose <strong>+ Add selected range</strong>, then <strong>Save cleaned copy</strong>. All editing is non-destructive and the original recording is never overwritten. <strong>Export audio</strong> creates an M4A or MP3 audio-only copy of the selected recording.</p><h3>Transcript search</h3>
+      <p>After a recording is saved, its transcript is generated automatically. Search inside <strong>Transcript & subtitles</strong>; matches jump the video directly to that moment. Choose <strong>Raw</strong> (default), <strong>Speakers</strong>, or <strong>Timecoded</strong>. Speaker view uses local speaker detection and starts a new paragraph when the detected speaker changes. The transcript remains read-only, but you can copy, export, or turn on <strong>CC</strong>.</p>
+      <h3>Library search</h3><p>The Playback search field searches filenames, categories, and locally saved transcript text.</p>
+      <h3>Chapters, meeting summary & action items</h3><p>After transcription, Playback automatically creates local chapters, an extractive meeting summary, and likely action items from the transcript. Chapter, summary, and action-item timestamps jump directly to the matching moment. Meeting insights are cached locally and can be regenerated without an API key.</p>
+      <h3>Keyboard shortcuts</h3><p>Command/Ctrl+Alt+R Record/Stop · P Pause/Resume · B Bookmark · S Snapshot · M Full/Mini Controller. Press <strong>F1</strong> or <strong>?</strong> anytime for the complete shortcut reference. A shortcut may be unavailable if the operating system or another app already owns it.</p>
+      <h3>Playback & subtitles</h3>
+      <p>Open the <strong>Playback</strong> tab, choose a recorded clip, and turn on <strong>CC</strong> in the player when the transcript is ready. Use <strong>Rename</strong> to rename the MP4 and transcript files together. Use the small category selector beneath the Rename/Trash controls to organize clips. The trash icon moves the recording and the matching TXT transcript file (and any legacy SRT file) to your operating system Trash after confirmation, so they can be restored if needed.</p>
+      <h3>Full View and Mini Controller</h3>
+      <p>Use the <strong>Full / Mini</strong> switch in the title bar. Full View includes recording and Playback. Mini Controller is recording-only and keeps essential status and recording controls visible while staying out of the way. Recording setup, Recording options, and App & AI tools remain in Full View.</p>
+      <h3>Window transparency</h3>
+      <p>Use the ◐ icon in the title bar to choose 0%, 10%, 20%, 30%, or 50% transparency. The setting is remembered.</p>
+      <h3>macOS permissions</h3>
+      <p>If recording or microphone capture is blocked, open System Settings → Privacy & Security and enable Screen & System Audio Recording and Microphone access for the app/Terminal, then restart PulseStudio.</p>
+      <h3>Windows permissions</h3>
+      <p>If microphone capture is blocked, check Settings → Privacy & security → Microphone. System audio uses Windows loopback capture.</p>
+      <h3>Diagnostic logs</h3><p>PulseStudio keeps rotating troubleshooting logs in the child <strong>logs</strong> folder. Open <strong>About & Diagnostics → Open logs</strong> when you need to inspect or share a recording failure. The log contains runtime, capture, encoder, recovery, CPU/memory, and error details; it does not contain recorded audio or video content.</p>
+    </div>
+    <div class="modal-footer"><button class="button secondary" data-close-dialog="helpDialog" type="button">Close</button></div>
+  </dialog>
+
+  <dialog id="aboutDialog" class="modal diagnostics-modal" aria-labelledby="aboutDialogTitle">
+    <div class="modal-header"><h2 id="aboutDialogTitle">About & Diagnostics</h2><button class="modal-close" data-close-dialog="aboutDialog" type="button" aria-label="Close About and Diagnostics">×</button></div>
+    <div class="modal-body about-content diagnostics-content">
+      <div class="about-mark" aria-hidden="true">SR</div>
+      <h3>PulseStudio</h3>
+      <p>Reliable local recording, transcription, speaker detection, meeting insights, playback, and recovery.</p>
+      <div class="about-creator-card" aria-label="PulseStudio creator">
+        <span class="about-creator-kicker">Created by</span>
+        <strong>Girish Gupta</strong>
+        <span class="about-creator-email">girish.gupta@gmail.com</span>
+      </div>
+      <div class="diagnostics-health-card" id="diagnosticsHealthCard" role="status" aria-live="polite">
+        <span class="diagnostics-health-icon" id="diagnosticOverallIcon" aria-hidden="true">…</span>
+        <div><strong id="diagnosticOverall">Checking app health…</strong><span id="diagnosticOverallDetail">Running a quick local check.</span></div>
+      </div>
+      <section class="diagnostics-export-card" aria-label="Export diagnostics package">
+        <div class="diagnostics-export-copy"><span class="record-section-kicker">SUPPORT</span><strong>Export Diagnostics ZIP</strong><span>Packages logs, app/audio configuration, capture health, recovery details, and timestamps. Your recording is excluded unless you explicitly include it.</span></div>
+        <button class="button primary" id="exportDiagnostics" type="button">Export Diagnostics ZIP</button>
+      </section>
+      <div class="diagnostics-checklist" aria-label="App health checks">
+        <div><span>App version</span><strong id="aboutVersion">0.2.110</strong></div>
+        <div><span>Screen access</span><strong id="diagnosticScreenPermission">Checking…</strong></div>
+        <div><span>Microphone</span><strong id="diagnosticMicPermission">Checking…</strong></div>
+        <div><span>Camera</span><strong id="diagnosticCameraPermission">Checking…</strong></div>
+        <div><span>Local AI</span><strong id="diagnosticAi">Checking…</strong></div>
+        <div><span>Storage</span><strong id="diagnosticStorage">Checking…</strong></div>
+        <div><span>Recovery</span><strong id="diagnosticRecovery">Checking…</strong></div>
+        <div class="diagnostics-update-row"><span>Updates</span><strong id="diagnosticUpdate">Checking…</strong></div>
+      </div>
+      <details class="diagnostics-technical-details">
+        <summary>Technical details</summary>
+        <div class="about-details diagnostics-grid">
+          <div><span>Build</span><strong id="diagnosticBuild">Checking…</strong></div>
+          <div><span>Platform</span><strong id="diagnosticPlatform">Checking…</strong></div>
+          <div><span>Video encoder</span><strong id="diagnosticEncoder">Checking…</strong></div>
+          <div><span>Recording folder</span><strong id="diagnosticFolder">Checking…</strong></div>
+          <div><span>Local AI models</span><strong id="diagnosticModels">Checking…</strong></div>
+        </div>
+      </details>
+      <label class="diagnostics-export-option"><input id="diagnosticsIncludeRecording" type="checkbox" /><span>Include the currently selected recording in the diagnostics package</span></label>
+      <div class="diagnostics-actions">
+        <button class="button secondary small" id="copyDiagnostics" type="button">Copy diagnostics</button>
+        <button class="button secondary small" id="openLogs" type="button">Open logs</button>
+        <button class="button secondary small" id="checkUpdates" type="button">Check for updates</button>
+        <button class="button primary small hidden" id="installUpdate" type="button">Restart and update</button>
+      </div>
+      <p class="helper">Updates never interrupt recording, recovery, or local AI processing. If an update is ready, you decide when to restart.</p>
+    </div>
+    <div class="modal-footer"><button class="button secondary" data-close-dialog="aboutDialog" type="button">Close</button></div>
+  </dialog>
+
+  <dialog id="modelManagerDialog" class="modal model-manager-modal" aria-labelledby="modelManagerDialogTitle">
+    <div class="modal-header"><h2 id="modelManagerDialogTitle">Local AI Models</h2><button class="modal-close" data-close-dialog="modelManagerDialog" type="button" aria-label="Close Local AI Models">×</button></div>
+    <div class="modal-body">
+      <p>These models run locally on your device. Download them before you need a feature, or remove them later to reclaim disk space.</p>
+      <div class="model-manager-summary"><strong id="modelManagerSummary">Checking local AI storage…</strong><button class="button secondary small" id="openModelsFolder" type="button">Open models folder</button></div>
+      <div id="modelManagerList" class="model-manager-list"></div>
+      <p class="helper">Removing a model does not remove recordings or transcripts. The model can be downloaded again when needed.</p>
+    </div>
+    <div class="modal-footer"><button class="button secondary" id="refreshModels" type="button">Refresh</button><button class="button secondary" data-close-dialog="modelManagerDialog" type="button">Close</button></div>
+  </dialog>
+
+  <dialog id="themesDialog" class="modal themes-modal" aria-labelledby="themesDialogTitle">
+    <div class="modal-header"><h2 id="themesDialogTitle">Themes</h2><button class="modal-close" data-close-dialog="themesDialog" type="button" aria-label="Close Themes">×</button></div>
+    <div class="modal-body themes-content">
+      <p>Choose the visual style of PulseStudio. This changes appearance only — recording, microphone, audio processing, and saved media are untouched.</p>
+      <div class="theme-choice-grid" role="radiogroup" aria-label="PulseStudio theme">
+        <button class="theme-choice-card" id="themeClassicChoice" type="button" data-ui-theme-choice="classic" role="radio" aria-checked="true">
+          <span class="theme-preview classic-preview" aria-hidden="true"><i></i><i></i><i></i><b></b></span>
+          <span class="theme-choice-copy"><strong>Classic</strong><small>Current PulseStudio design</small></span><span class="theme-choice-check">✓</span>
+        </button>
+        <button class="theme-choice-card" id="themeStudioChoice" type="button" data-ui-theme-choice="studio" role="radio" aria-checked="false">
+          <span class="theme-preview studio-preview" aria-hidden="true"><i></i><i></i><i></i><b></b></span>
+          <span class="theme-choice-copy"><strong>Studio</strong><small>Polished dark/glass look from the UI concept</small></span><span class="theme-choice-check">✓</span>
+        </button>
+      </div>
+      <div class="theme-appearance-row"><div><strong>Light / Dark appearance</strong><span>Your existing light/dark toggle still works with either theme.</span></div><button class="button secondary small" id="themesAppearanceToggle" type="button">Toggle light / dark</button></div>
+    </div>
+    <div class="modal-footer"><button class="button secondary" data-close-dialog="themesDialog" type="button">Close</button></div>
+  </dialog>
+
+  <dialog id="firstRunDialog" class="modal first-run-modal" aria-labelledby="firstRunTitle" aria-describedby="firstRunIntro">
+    <div class="modal-header"><h2 id="firstRunTitle">Welcome to PulseStudio</h2></div>
+    <div class="modal-body">
+      <p class="first-run-intro" id="firstRunIntro"><strong>Record your screen, microphone, and system audio with confidence.</strong> Your recordings and local AI processing stay on this computer unless you choose to export or share them.</p>
+      <div class="first-run-list">
+        <div><span class="first-run-step">1</span><div><strong>Choose where recordings are saved</strong><span id="firstRunFolder">Checking…</span></div><button class="button secondary small" id="firstRunChooseFolder" type="button">Change…</button></div>
+        <div><span class="first-run-step">2</span><div><strong>Permissions only when needed</strong><span>Screen, microphone, and camera access are requested only when you use those protected features. PulseStudio will not open extra permission prompts during setup.</span></div></div>
+        <div><span class="first-run-step">3</span><div><strong>Ready to record</strong><span>You can change recording, audio, and storage options later from the Record tab.</span></div></div>
+      </div>
+    </div>
+    <div class="modal-footer"><button class="button primary" id="completeFirstRun" type="button">Ready to record</button></div>
+  </dialog>
+
+  <dialog id="shortcutsDialog" class="modal shortcuts-modal" aria-labelledby="shortcutsDialogTitle">
+    <div class="modal-header"><h2 id="shortcutsDialogTitle">Keyboard shortcuts</h2><button class="modal-close" data-close-dialog="shortcutsDialog" type="button" aria-label="Close keyboard shortcuts">×</button></div>
+    <div class="modal-body">
+      <p class="helper">Press <strong>F1</strong> or <strong>?</strong> anytime to open this reference.</p>
+      <div class="shortcut-reference" role="list">
+        <div role="listitem"><kbd>⌘/Ctrl+Alt+R</kbd><span>Start / stop recording</span></div>
+        <div role="listitem"><kbd>⌘/Ctrl+Alt+P</kbd><span>Pause / resume recording</span></div>
+        <div role="listitem"><kbd>⌘/Ctrl+Alt+B</kbd><span>Add bookmark</span></div>
+        <div role="listitem"><kbd>⌘/Ctrl+Alt+S</kbd><span>Take snapshot</span></div>
+        <div role="listitem"><kbd>⌘/Ctrl+Alt+M</kbd><span>Full View / Mini Controller</span></div>
+        <div role="listitem"><kbd>Space</kbd><span>Play / pause in Playback</span></div>
+        <div role="listitem"><kbd>← / →</kbd><span>Seek 1 second</span></div>
+        <div role="listitem"><kbd>Shift + ← / →</kbd><span>Seek 5 seconds</span></div>
+        <div role="listitem"><kbd>B</kbd><span>Add playback bookmark</span></div>
+        <div role="listitem"><kbd>M</kbd><span>Mute / unmute playback</span></div>
+        <div role="listitem"><kbd>⌘/Ctrl+F</kbd><span>Search transcript</span></div>
+      </div>
+    </div>
+    <div class="modal-footer"><button class="button secondary" data-close-dialog="shortcutsDialog" type="button">Close</button></div>
+  </dialog>
+
+  <script src="modules/recording-estimate.js"></script>
+  <script src="modules/speaker-tools.js"></script>
+  <script src="modules/trim-tools.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
