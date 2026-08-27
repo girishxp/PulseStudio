@@ -812,7 +812,7 @@
           </button>
           <div id="appToolsContent" class="settings-content record-secondary-content hidden">
             <div class="settings-subsection app-privacy-settings">
-              <div class="field-label">Screen sharing privacy</div>
+              <div class="field-label">Privacy</div>
               <button class="apple-setting-row app-privacy-toggle is-on" id="windowCapturePrivacyToggle" type="button" aria-pressed="true">
                 <span class="apple-setting-icon" aria-hidden="true">
                   <svg viewBox="0 0 24 24"><path d="M12 3.5 19 6v5.2c0 4.5-2.8 7.7-7 9.3-4.2-1.6-7-4.8-7-9.3V6z"/><path d="m8.8 12 2.1 2.1 4.5-4.7"/></svg>
@@ -821,6 +821,17 @@
                 <span class="apple-switch" aria-hidden="true"><span></span></span>
               </button>
               <p class="helper app-privacy-helper">Use this during calls when you do not want other people to see the PulseStudio window. Turn it off when you intentionally want to capture or share this app. Operating-system and sharing-app support can vary.</p>
+            <div class="analytics-card" id="analyticsCard">
+              <div class="analytics-card-copy"><strong>Anonymous product analytics</strong><span id="analyticsStatus">Checking analytics status…</span></div>
+              <button class="apple-setting-row analytics-toggle" id="analyticsToggle" type="button" aria-pressed="false">
+                <span class="apple-setting-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24"><path d="M5 19V10"/><path d="M12 19V5"/><path d="M19 19v-7"/></svg>
+                </span>
+                <span class="apple-setting-copy"><strong>Share anonymous usage analytics</strong><small id="analyticsDetail">Version, OS, feature use, recording reliability, and update adoption only.</small></span>
+                <span class="apple-switch" aria-hidden="true"><span></span></span>
+              </button>
+              <p class="helper analytics-helper">Never sends recordings, microphone audio, transcripts, filenames, bookmark text, screen contents, names, email addresses, or exact location. Country-level analytics may be derived by the analytics service from the network request.</p>
+            </div>
             </div>
             <div class="voice-enrollment-card" id="voiceEnrollmentCard">
               <div class="voice-enrollment-copy"><strong>My Voice profile</strong><span id="voiceEnrollmentStatus">Optional · improves My Voice and speaker matching without changing recorded audio.</span></div>
@@ -834,6 +845,7 @@
             <div class="app-tools-actions">
               <button class="button secondary small" id="openModelManager" type="button">Manage AI Models…</button>
               <button class="button secondary small" id="openDiagnostics" type="button">App Diagnostics…</button>
+              <button class="button secondary small" id="sendFeedback" type="button">Send Feedback…</button>
               <button class="button primary small" id="exportDiagnosticsQuick" type="button">Export Diagnostics ZIP</button>
             </div>
             <p class="helper app-tools-helper">Manage local AI storage, inspect app health, and review update/recovery status. These tools do not change normal recording settings.</p>
@@ -958,13 +970,14 @@
         <button class="button primary" id="exportDiagnostics" type="button">Export Diagnostics ZIP</button>
       </section>
       <div class="diagnostics-checklist" aria-label="App health checks">
-        <div><span>App version</span><strong id="aboutVersion">0.2.110</strong></div>
+        <div><span>App version</span><strong id="aboutVersion">0.2.118</strong></div>
         <div><span>Screen access</span><strong id="diagnosticScreenPermission">Checking…</strong></div>
         <div><span>Microphone</span><strong id="diagnosticMicPermission">Checking…</strong></div>
         <div><span>Camera</span><strong id="diagnosticCameraPermission">Checking…</strong></div>
         <div><span>Local AI</span><strong id="diagnosticAi">Checking…</strong></div>
         <div><span>Storage</span><strong id="diagnosticStorage">Checking…</strong></div>
         <div><span>Recovery</span><strong id="diagnosticRecovery">Checking…</strong></div>
+        <div><span>Analytics</span><strong id="diagnosticAnalytics">Checking…</strong></div>
         <div class="diagnostics-update-row"><span>Updates</span><strong id="diagnosticUpdate">Checking…</strong></div>
       </div>
       <details class="diagnostics-technical-details">
@@ -981,6 +994,7 @@
       <div class="diagnostics-actions">
         <button class="button secondary small" id="copyDiagnostics" type="button">Copy diagnostics</button>
         <button class="button secondary small" id="openLogs" type="button">Open logs</button>
+        <button class="button secondary small" id="sendFeedbackDiagnostics" type="button">Send Feedback…</button>
         <button class="button secondary small" id="checkUpdates" type="button">Check for updates</button>
         <button class="button primary small hidden" id="installUpdate" type="button">Restart and update</button>
       </div>
@@ -1019,6 +1033,22 @@
     <div class="modal-footer"><button class="button secondary" data-close-dialog="themesDialog" type="button">Close</button></div>
   </dialog>
 
+  <dialog id="analyticsReminderDialog" class="modal analytics-reminder-modal" aria-labelledby="analyticsReminderTitle" aria-describedby="analyticsReminderText">
+    <div class="modal-header"><h2 id="analyticsReminderTitle">Help improve PulseStudio</h2></div>
+    <div class="modal-body">
+      <p id="analyticsReminderText"><strong>Anonymous product analytics are currently off.</strong> Sharing anonymous usage and reliability metrics helps improve recording stability, updates, and the features people use most.</p>
+      <div class="analytics-reminder-points">
+        <span>Includes app version, OS, feature usage, recording reliability, and update adoption.</span>
+        <span>Never includes recordings, screen contents, microphone audio, transcripts, filenames, bookmark text, names, email addresses, or exact location.</span>
+      </div>
+      <p class="helper">If you keep analytics off, PulseStudio will ask again the next time the app starts. You can change this anytime in App &amp; AI tools → Privacy.</p>
+    </div>
+    <div class="modal-footer analytics-reminder-actions">
+      <button class="button secondary" id="analyticsReminderContinue" type="button">Continue with analytics off</button>
+      <button class="button primary" id="analyticsReminderEnable" type="button">Share anonymous analytics</button>
+    </div>
+  </dialog>
+
   <dialog id="firstRunDialog" class="modal first-run-modal" aria-labelledby="firstRunTitle" aria-describedby="firstRunIntro">
     <div class="modal-header"><h2 id="firstRunTitle">Welcome to PulseStudio</h2></div>
     <div class="modal-body">
@@ -1031,6 +1061,7 @@
     </div>
     <div class="modal-footer"><button class="button primary" id="completeFirstRun" type="button">Ready to record</button></div>
   </dialog>
+
 
   <dialog id="shortcutsDialog" class="modal shortcuts-modal" aria-labelledby="shortcutsDialogTitle">
     <div class="modal-header"><h2 id="shortcutsDialogTitle">Keyboard shortcuts</h2><button class="modal-close" data-close-dialog="shortcutsDialog" type="button" aria-label="Close keyboard shortcuts">×</button></div>

@@ -1,0 +1,8 @@
+{
+  "provider": "posthog",
+  "host": "https://us.i.posthog.com",
+  "apiKey": "phc_oJEXte2DUT3Pvoxx3twpNnUDqXzZbuFf0pBnneer6Ljr",
+  "defaultEnabled": true,
+  "heartbeatMinutes": 10,
+  "dashboardUrl": "https://us.posthog.com"
+}

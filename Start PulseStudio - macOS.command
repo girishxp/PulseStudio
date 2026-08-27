@@ -44,7 +44,12 @@ APP_VERSION="$(node -p "require('./package.json').version" 2>/dev/null || true)"
   echo "Architecture: $(uname -m)"
 } > "$LOG_FILE"
 
+PACKAGE_HASH_FILE="node_modules/.pulsestudio-package-hash"
+PACKAGE_HASH="$(node -e "const fs=require('fs'),c=require('crypto');process.stdout.write(c.createHash('sha256').update(fs.readFileSync('package.json')).digest('hex'))" 2>/dev/null || true)"
 needs_install=0
+if [ -n "$PACKAGE_HASH" ] && { [ ! -f "$PACKAGE_HASH_FILE" ] || [ "$(cat "$PACKAGE_HASH_FILE" 2>/dev/null || true)" != "$PACKAGE_HASH" ]; }; then
+  needs_install=1
+fi
 for dep in electron ffmpeg-static @huggingface/transformers uiohook-napi @sapphi-red/web-noise-suppressor; do
   if [ ! -d "node_modules/$dep" ]; then
     needs_install=1
@@ -58,6 +63,7 @@ if [ "$needs_install" -eq 1 ]; then
   if ! npm install --include=dev 2>&1 | tee -a "$LOG_FILE"; then
     pause_and_exit "Dependency installation failed."
   fi
+  if [ -n "$PACKAGE_HASH" ]; then printf '%s' "$PACKAGE_HASH" > "$PACKAGE_HASH_FILE"; fi
 fi
 
 # v0.2.75: npm can successfully install the Electron JavaScript package while

@@ -1,4 +1,27 @@
-# PulseStudio v0.2.111
+# PulseStudio v0.2.118
+
+## v0.2.118 analytics coverage and reminder alignment
+
+- Aligned the two analytics reminder actions to equal width and height while preserving the existing dialog design.
+- Expanded anonymous product analytics without collecting recording content, audio, transcripts, filenames, bookmark text, names, email addresses, or exact location.
+- Added safe session/retention metadata, broad feature-control usage, shortcut usage, playback selection, transcription/speaker/insights lifecycle, recovery health, renderer/runtime failures, microphone/system-audio interruptions, and generic sanitized warning/error telemetry.
+- Recording, microphone, RNNoise, fan suppression, echo cancellation, capture, encoding, and saved-media processing are unchanged.
+
+
+## v0.2.117 feedback and analytics reminder
+
+- Added **Send Feedback…** in App & AI tools and App Diagnostics. It opens a pre-filled PulseStudio GitHub feedback issue in the default browser.
+- Anonymous product analytics remain opt-out by default. If a user explicitly disables analytics, PulseStudio keeps analytics off but shows a short reminder on every subsequent app launch until analytics are re-enabled.
+- The reminder never changes recording, audio, microphone, playback, or saved-media processing.
+
+
+## v0.2.116 desktop analytics preference
+
+- Anonymous product analytics now follow an opt-out desktop model: analytics are enabled by default when the configured PostHog backend is available.
+- Users can disable or re-enable analytics at any time under **App & AI tools → Privacy → Share anonymous usage analytics**.
+- Existing explicit user choices are preserved across upgrades.
+- Analytics remain privacy-limited and never include recordings, screen contents, microphone/system audio, transcripts, filenames, bookmark text, names, email addresses, or exact location.
+
 
 ## v0.2.111 PulseStudio rebrand
 
@@ -312,3 +335,16 @@ The extracted folder is intentionally simple:
 6. Check the macOS launcher log at `~/Library/Logs/PulseStudio/launcher.log` if startup preparation fails.
 
 Do not delete recovery files if a recording was interrupted; PulseStudio protects them and lets you choose **Recover** when convenient.
+
+
+## Automatic updates
+
+PulseStudio v0.2.112 and later can check the public `girishxp/PulseStudio` GitHub Releases feed automatically. When a newer `PulseStudio-cross-platform-v<version>.zip` release is available, PulseStudio downloads it only while recording/recovery/AI work is idle, verifies the GitHub asset size and SHA-256 digest when GitHub supplies one, and shows **Restart and update** in App Diagnostics. The update helper applies the ZIP only after PulseStudio exits, preserves local dependencies/logs, and restarts the normal PulseStudio launcher.
+
+For future releases, publish a normal GitHub Release with a semantic tag such as `v0.2.118` and attach exactly `PulseStudio-cross-platform-v0.2.118.zip`. No AWS server is required.
+
+## Anonymous product analytics
+
+PulseStudio contains a privacy-limited analytics client designed for PostHog Cloud. Anonymous product analytics are **on by default** when the configured backend is available and can be changed at any time under **App & AI tools → Privacy → Share anonymous usage analytics**. An explicit user setting is preserved across upgrades. The client reports an anonymous installation ID, app version, operating system/architecture, session activity, recording success/reliability metadata, feature usage, and update adoption. It never sends recordings, screen contents, microphone audio, transcripts, filenames, bookmark text, names, email addresses, or exact location. Country-level reporting can be derived by PostHog from the request network location.
+
+Owner setup: create a PostHog Cloud project, copy its **Project API Key** (the client-side `phc_...` key), then place it in `app/analytics-config.json` as `apiKey`. You may also set `PULSESTUDIO_ANALYTICS_KEY` while testing. Publish the next PulseStudio release after adding the project key. Do not place PostHog personal API keys or other secrets in the application.

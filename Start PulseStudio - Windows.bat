@@ -37,7 +37,15 @@ if not defined APP_VERSION (
   exit /b 1
 )
 
+set "PACKAGE_HASH_FILE=node_modules\.pulsestudio-package-hash"
+set "PACKAGE_HASH="
+for /f "delims=" %%H in ('node -e "const fs=require('fs'),c=require('crypto');process.stdout.write(c.createHash('sha256').update(fs.readFileSync('package.json')).digest('hex'))"') do set "PACKAGE_HASH=%%H"
 set "NEEDS_INSTALL=0"
+if defined PACKAGE_HASH (
+  set "CACHED_PACKAGE_HASH="
+  if exist "%PACKAGE_HASH_FILE%" set /p CACHED_PACKAGE_HASH=<"%PACKAGE_HASH_FILE%"
+  if not "%CACHED_PACKAGE_HASH%"=="%PACKAGE_HASH%" set "NEEDS_INSTALL=1"
+)
 if not exist "node_modules\electron" set "NEEDS_INSTALL=1"
 if not exist "node_modules\electron-builder" set "NEEDS_INSTALL=1"
 if not exist "node_modules\ffmpeg-static" set "NEEDS_INSTALL=1"
@@ -54,6 +62,7 @@ if "%NEEDS_INSTALL%"=="1" (
     pause
     exit /b 1
   )
+  if defined PACKAGE_HASH >"%PACKAGE_HASH_FILE%" echo %PACKAGE_HASH%
 )
 
 set "BUILDER=%APP_DIR%\node_modules\.bin\electron-builder.cmd"

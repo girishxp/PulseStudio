@@ -1,5 +1,9 @@
 {
-  "provider": "generic",
-  "url": "",
-  "channel": "latest"
+  "provider": "github-portable",
+  "owner": "girishxp",
+  "repo": "PulseStudio",
+  "assetPattern": "^PulseStudio-cross-platform-v([0-9]+\\.[0-9]+\\.[0-9]+)\\.zip$",
+  "checkIntervalHours": 6,
+  "channel": "latest",
+  "apiBaseUrl": "https://api.github.com"
 }

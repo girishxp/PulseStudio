@@ -1,6 +1,6 @@
 {
   "name": "pulsestudio",
-  "version": "0.2.111",
+  "version": "0.2.118",
   "description": "PulseStudio - your intelligent workspace for screen, voice, and playback.",
   "main": "main.js",
   "author": "Girish Gupta <girish.gupta@gmail.com>",
@@ -50,7 +50,8 @@
       "assets/**/*",
       "entitlements.mac.plist",
       "package.json",
-      "update-feed.json"
+      "update-feed.json",
+      "analytics-config.json"
     ],
     "directories": {
       "output": "dist"

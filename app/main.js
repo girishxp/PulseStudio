@@ -18,6 +18,7 @@ const { basicTranscriptLooksSparse, transcriptWordCount } = require('./lib/trans
 const { LocalModelManager } = require('./lib/model-manager');
 const { RecoveryAwareUpdateManager } = require('./lib/update-manager');
 const { ActivityLogger } = require('./lib/activity-logger');
+const { AnalyticsManager } = require('./lib/analytics-manager');
 const { refineVoiceHighlightsAgainstReference } = require('./lib/voice-highlights');
 
 const APP_DISPLAY_NAME = 'PulseStudio';
@@ -25,6 +26,7 @@ const APP_USER_MODEL_ID = 'com.girishxp.pulsestudio';
 const APP_ICON_PATH = path.join(__dirname, 'assets', 'pulsestudio-icon.png');
 const APP_USER_DATA_PATH = path.join(app.getPath('appData'), APP_DISPLAY_NAME);
 try { app.setPath('userData', APP_USER_DATA_PATH); } catch {}
+let analyticsManager = null;
 const activityLogger = new ActivityLogger({
   directory: path.resolve(__dirname, 'logs'),
   fallbackDirectory: path.join(app.getPath('userData'), 'logs'),
@@ -32,7 +34,9 @@ const activityLogger = new ActivityLogger({
   backups: 4
 });
 function activityLog(level, event, details = {}) {
-  return activityLogger.write(level, event, details);
+  const result = activityLogger.write(level, event, details);
+  try { analyticsManager?.trackActivity?.(level, event, details); } catch {}
+  return result;
 }
 activityLog('info', 'app.process-start', {
   appVersion: (() => { try { return app.getVersion(); } catch { return 'unknown'; } })(),
@@ -4590,7 +4594,8 @@ function diagnosticsSnapshot() {
     audioProcessing: { ffmpegPath: safeFfmpegPath(), rnnoise: rnnoiseAssetStatus() },
     voiceProfile: publicVoiceProfileStatus(),
     models: { cacheDir: models.cacheDir, bytes: models.cacheBytes, installed: models.models.filter((item) => item.installed).length, total: models.models.length },
-    update: updateManager?.snapshot?.() || { state: app.isPackaged ? 'initializing' : 'development', configured: false }
+    update: updateManager?.snapshot?.() || { state: 'initializing', configured: false },
+    analytics: analyticsManager?.snapshot?.() || { configured: false, enabled: false, provider: 'none' }
   };
 }
 
@@ -4713,11 +4718,20 @@ app.whenReady().then(async () => {
     });
   } catch {}
   installApplicationMenu();
+  analyticsManager = new AnalyticsManager({
+    app,
+    configPath: path.join(__dirname, 'analytics-config.json'),
+    onStatus: (status) => {
+      try { if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('analytics:status', status); } catch {}
+    }
+  });
+  analyticsManager.init();
   updateManager = new RecoveryAwareUpdateManager({
     app,
     getWindow: () => mainWindow,
     isSafe: updateSafetyState,
-    configPath: path.join(__dirname, 'update-feed.json')
+    configPath: path.join(__dirname, 'update-feed.json'),
+    onEvent: (event, properties) => analyticsManager?.track?.(event, properties)
   });
   updateManager.init();
   registerGlobalRecorderShortcuts();
@@ -4767,6 +4781,7 @@ app.on('before-quit', () => {
   clearTimeout(compactPositionRepairTimer);
   if (compactWindowBounds) persistCompactWindowBounds(compactWindowBounds);
   updateManager?.shutdown?.();
+  void analyticsManager?.shutdown?.();
   aiWorkerManager.shutdown();
   getRecoveryJournalManager().flush();
   globalShortcut.unregisterAll();
@@ -5009,6 +5024,21 @@ ipcMain.handle('app:platform-info', () => {
 
 ipcMain.handle('app:diagnostics', () => diagnosticsSnapshot());
 ipcMain.handle('app:export-diagnostics', (_event, options = {}) => exportDiagnosticsPackage(options));
+ipcMain.handle('app:send-feedback', async () => {
+  const params = new URLSearchParams({
+    title: '[Feedback] ',
+    body: `PulseStudio version: ${app.getVersion()}\nPlatform: ${process.platform} ${process.arch}\n\nPlease describe your feedback or suggestion below:\n\n`
+  });
+  const url = `https://github.com/girishxp/PulseStudio/issues/new?${params.toString()}`;
+  try {
+    await shell.openExternal(url);
+    analyticsManager?.track?.('feedback_opened', { destination: 'github_issues' });
+    return { opened: true };
+  } catch (error) {
+    logActivity('warn', 'feedback.open-failed', { error: serializeError(error) });
+    return { opened: false, error: error?.message || 'Could not open feedback page.' };
+  }
+});
 ipcMain.handle('models:list', () => localModelManager.summary());
 ipcMain.handle('models:download', async (_event, modelId) => localModelManager.download(String(modelId || '')));
 ipcMain.handle('models:remove', (_event, modelId) => localModelManager.remove(String(modelId || '')));
@@ -5016,6 +5046,8 @@ ipcMain.handle('models:open-folder', () => { const dir = localModelManager.cache
 ipcMain.handle('update:status', () => updateManager?.snapshot?.() || { state: 'unavailable', configured: false });
 ipcMain.handle('update:check', () => updateManager?.check?.(true) || { state: 'unavailable' });
 ipcMain.handle('update:install', () => { getRecoveryJournalManager().flush(); return updateManager?.install?.() || { ok: false, reason: 'Updater is unavailable.' }; });
+ipcMain.handle('analytics:status', () => analyticsManager?.snapshot?.() || { configured: false, enabled: false, provider: 'none' });
+ipcMain.handle('analytics:set-enabled', (_event, enabled) => analyticsManager?.setEnabled?.(Boolean(enabled)) || { configured: false, enabled: false, provider: 'none' });
 
 ipcMain.handle('capture:list-sources', async () => {
   let sources;

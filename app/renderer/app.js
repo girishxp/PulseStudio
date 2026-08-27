@@ -2875,6 +2875,7 @@ function renderPlaybackInsights() {
 
 async function loadPlaybackInsights(recordingPath, selectionToken = state.playbackSelectionToken, force = false) {
   if (!recordingPath || state.insightsLoading) return;
+  window.recorderAPI.logEvent?.('info', 'ai.insights-started', { force: Boolean(force) });
   state.insightsLoading = true;
   $('insightsStatus').textContent = force ? 'Enhancing meeting summary and action items locally…' : 'Preparing meeting summary and action items from the transcript…';
   renderPlaybackInsights();
@@ -2884,12 +2885,14 @@ async function loadPlaybackInsights(recordingPath, selectionToken = state.playba
       : await window.recorderAPI.getRecordingInsights(recordingPath);
     if (selectionToken !== state.playbackSelectionToken || state.selectedPlaybackPath !== recordingPath) return;
     state.playbackInsights = insights || { overview: '', chapters: [], summaryBullets: [], actionItems: [] };
+    window.recorderAPI.logEvent?.('info', 'ai.insights-completed', { force: Boolean(force), method: insights?.method || '', chapterCount: state.playbackInsights.chapters?.length || 0, actionItemCount: state.playbackInsights.actionItems?.length || 0 });
     $('insightsStatus').textContent = String(insights?.method || '').includes('ai-busy')
       ? 'Quick meeting analysis is ready. Enhanced notes were deferred because transcription and other active AI work have priority.'
       : 'Meeting analysis ready. Review the timestamped outcomes and explicit follow-ups below.';
   } catch (error) {
     if (selectionToken !== state.playbackSelectionToken || state.selectedPlaybackPath !== recordingPath) return;
     state.playbackInsights = { overview: '', chapters: [], summaryBullets: [], actionItems: [] };
+    window.recorderAPI.logEvent?.('error', 'ai.insights-failed', { force: Boolean(force), errorName: error?.name || 'Error' });
     $('insightsStatus').textContent = /Transcript is not ready/i.test(error.message || '')
       ? 'Transcript is still being generated. Meeting insights will appear automatically when it is ready.'
       : `Meeting insights could not be generated. ${friendlyErrorText(error)}`;
@@ -3901,6 +3904,7 @@ function endTrimDrag(event) {
 }
 
 async function selectPlaybackRecording(recording) {
+  window.recorderAPI.logEvent?.('info', 'playback.recording-selected', { durationSeconds: Number(recording?.durationSeconds || 0), recordingKind: recording?.kind || recording?.recordingKind || '' });
   closeBookmarkInlineEditor({ resume: false });
   const selectionToken = ++state.playbackSelectionToken;
   state.selectedPlaybackPath = recording.path;
@@ -4220,6 +4224,7 @@ function renderSpeakerCorrectionPanel() {
 }
 
 async function loadPlaybackSpeakers(recordingPath, selectionToken, force = false) {
+  window.recorderAPI.logEvent?.('info', 'ai.speaker-detection-started', { force: Boolean(force) });
   state.speakerSegments = [];
   state.speakerCount = 0;
   state.speakerDefinitions = [];
@@ -4239,6 +4244,7 @@ async function loadPlaybackSpeakers(recordingPath, selectionToken, force = false
     state.speakerDefinitions = Array.isArray(result?.speakers) ? result.speakers : [];
     state.speakerRecordingPath = recordingPath;
     state.speakerError = '';
+    window.recorderAPI.logEvent?.('info', 'ai.speaker-detection-completed', { force: Boolean(force), speakerCount: state.speakerCount });
     if (status) status.textContent = state.speakerCount > 1
       ? `${state.speakerCount} recurring voices detected in this recording.`
       : state.speakerCount === 1 ? '1 recurring voice detected.' : 'No distinct speakers detected.';
@@ -4249,6 +4255,7 @@ async function loadPlaybackSpeakers(recordingPath, selectionToken, force = false
     state.speakerDefinitions = [];
     state.speakerRecordingPath = null;
     state.speakerError = friendlyErrorText(error);
+    window.recorderAPI.logEvent?.('error', 'ai.speaker-detection-failed', { force: Boolean(force), errorName: error?.name || 'Error' });
     if (status) status.textContent = 'Speaker detection unavailable; showing paragraph grouping.';
   } finally {
     if (selectionToken === state.playbackSelectionToken && recordingPath === state.selectedPlaybackPath) {
@@ -6832,6 +6839,7 @@ async function saveTrimmedCopy() {
 
 async function runAutomaticTranscription(recordingPath, focusPanel = true, force = false) {
   if (!recordingPath || state.transcribingPaths.has(recordingPath)) return;
+  window.recorderAPI.logEvent?.('info', 'ai.transcription-started', { force: Boolean(force) });
   state.transcribingPaths.add(recordingPath);
   if (state.selectedPlaybackPath === recordingPath) $('renamePlaybackFile').disabled = true;
   if (focusPanel && state.currentWorkspace === 'playback' && state.selectedPlaybackPath === recordingPath) {
@@ -6867,12 +6875,15 @@ async function runAutomaticTranscription(recordingPath, focusPanel = true, force
       loadPlaybackSpeakers(recordingPath, state.playbackSelectionToken, false).catch(() => {});
       loadPlaybackInsights(recordingPath, state.playbackSelectionToken, false).catch(() => {});
     }
+    window.recorderAPI.logEvent?.('info', 'ai.transcription-completed', { force: Boolean(force), wordCountBucket: analyticsWordCountBucket(result.text || '') });
     if (stoppedRecordingUiIsIdle()) setStatus(`Transcript saved automatically for ${recordingPath.split(/[\\/]/).pop()}.`);
   } catch (error) {
     const cancelled = /recording was deleted|processing was cancelled|AI processing was cancelled|cancelled because the recording was deleted/i.test(String(error?.message || ''));
     if (cancelled) {
+      window.recorderAPI.logEvent?.('warn', 'ai.transcription-cancelled', { force: Boolean(force) });
       if ((state.transcriptTargetPath === recordingPath || focusPanel) && state.selectedPlaybackPath === recordingPath) $('transcriptStatus').textContent = 'Transcription cancelled.';
     } else {
+      window.recorderAPI.logEvent?.('error', 'ai.transcription-failed', { force: Boolean(force), errorName: error?.name || 'Error' });
       if (state.transcriptTargetPath === recordingPath || focusPanel) {
         $('transcriptStatus').textContent = `Transcript could not finish. ${friendlyErrorText(error)} Select the recording again to retry.`;
       }
@@ -7009,10 +7020,122 @@ function updateUpdateUi(status) {
   const labels = {
     development: 'Installed app only', unconfigured: 'Not configured', unavailable: 'Unavailable', idle: 'Automatic checks enabled',
     checking: 'Checking…', current: 'Up to date', downloading: value.progress != null ? `Downloading quietly · ${Math.round(value.progress * 100)}%` : 'Downloading quietly…',
-    deferred: 'Waiting until the app is idle', ready: `Update ready${value.availableVersion ? ` · v${value.availableVersion}` : ''}`, error: 'Could not check'
+    deferred: 'Waiting until the app is idle', ready: `Update ready${value.availableVersion ? ` · v${value.availableVersion}` : ''}`, installing: 'Installing and restarting…', error: 'Could not check'
   };
   if ($('diagnosticUpdate')) { $('diagnosticUpdate').textContent = labels[value.state] || value.message || 'Unknown'; $('diagnosticUpdate').title = value.message || ''; }
   $('installUpdate')?.classList.toggle('hidden', value.state !== 'ready');
+}
+
+function updateAnalyticsUi(status) {
+  const value = status || {};
+  const toggle = $('analyticsToggle');
+  const statusNode = $('analyticsStatus');
+  const detail = $('analyticsDetail');
+  if (toggle) {
+    toggle.disabled = !value.configured;
+    toggle.classList.toggle('is-on', Boolean(value.enabled));
+    toggle.setAttribute('aria-pressed', value.enabled ? 'true' : 'false');
+  }
+  if (statusNode) {
+    statusNode.textContent = !value.configured
+      ? 'Analytics backend not configured yet.'
+      : value.enabled
+        ? (value.lastError ? 'On · waiting to reconnect' : 'On · anonymous usage metrics enabled')
+        : 'Off · no usage analytics are sent';
+  }
+  if (detail) detail.textContent = !value.configured
+    ? 'Owner setup required before distributed copies can report analytics.'
+    : 'Version, OS, sessions, feature use, recording reliability, and update adoption only.';
+  if ($('diagnosticAnalytics')) $('diagnosticAnalytics').textContent = !value.configured ? 'Not configured' : value.enabled ? '✓ Anonymous analytics on' : 'Off';
+}
+
+async function showAnalyticsReminderIfDisabled() {
+  const status = await window.recorderAPI.getAnalyticsStatus?.().catch(() => null);
+  if (!status?.configured || status.enabled) return false;
+  const dialog = $('analyticsReminderDialog');
+  if (!dialog || dialog.open) return false;
+  const returnToMini = state.viewMode === 'compact';
+  if (returnToMini) await applyViewMode('full', true);
+  dialog.dataset.returnToMini = returnToMini ? '1' : '0';
+  dialog.showModal();
+  return true;
+}
+
+async function closeAnalyticsReminder() {
+  const dialog = $('analyticsReminderDialog');
+  const returnToMini = dialog?.dataset.returnToMini === '1';
+  dialog?.close();
+  if (returnToMini) await applyViewMode('compact', true);
+}
+
+const anonymousUsageGroups = Object.freeze({
+  compactMacCloseButton: 'window', compactMacMinimizeButton: 'window', transparencyButton: 'window', themeToggle: 'appearance', alwaysOnTopButton: 'window', compactFullViewButton: 'window', themesButton: 'appearance', helpButton: 'help', aboutButton: 'diagnostics',
+  captureWorkspaceTab: 'navigation', playbackWorkspaceTab: 'navigation', fullViewButton: 'window', compactViewButton: 'window', refreshRecordings: 'library', openRecordingsFolder: 'library', refreshSources: 'capture', chooseRegion: 'capture', compactCaptureSettingsToggle: 'capture', compactChooseRegion: 'capture',
+  compactRecordingMicToggle: 'recording', compactRecordingKindVideoButton: 'recording', compactRecordingKindAudioButton: 'recording', compactPauseButton: 'recording', compactBookmarkButton: 'bookmarks', compactStartButton: 'recording',
+  showInFolder: 'library', copySavedPath: 'library', clearLibrarySearch: 'library', newCategoryButton: 'library', batchSelectButton: 'library', batchDeleteSelected: 'library', batchCancelSelection: 'library', bookmarkInlineSave: 'bookmarks',
+  previousClip: 'playback', previousBookmark: 'bookmarks', addBookmarkPlayer: 'bookmarks', deleteBookmarkPlayer: 'bookmarks', nextBookmark: 'bookmarks', nextClip: 'playback', playPausePlayback: 'playback', seekOptionsToggle: 'playback', toggleVoiceHighlights: 'my_voice', snapshotPlayback: 'snapshot', playerSubtitleControl: 'captions', playbackMute: 'playback', playbackFullscreen: 'playback', toggleChapterSidebar: 'timeline', hideChapterSidebar: 'timeline',
+  stickyPreviousBookmark: 'bookmarks', stickyAddBookmark: 'bookmarks', stickyDeleteBookmark: 'bookmarks', stickyNextBookmark: 'bookmarks', stickySeekBack: 'playback', stickyPlayPause: 'playback', stickySeekForward: 'playback', renamePlaybackFile: 'library', openPlaybackTranscript: 'transcription', showPlaybackFile: 'library', exportPlaybackAudio: 'export', playbackMoreButton: 'playback', copyPlaybackPath: 'library', copyPlaybackTranscript: 'transcription',
+  moreShowTranscriptFiles: 'transcription', showTranscriptFiles: 'transcription', transcriptViewRaw: 'transcription', transcriptViewSpeakers: 'transcription', transcriptViewTimecoded: 'transcription', toggleTranscript: 'transcription', copyTranscript: 'transcription', exportTxt: 'export', exportSrt: 'export', clearTranscriptSearch: 'transcription', transcriptSearchPrev: 'transcription', transcriptSearchNext: 'transcription',
+  copyAllInsights: 'insights', regenerateInsights: 'insights', insightsPanelToggle: 'insights', chaptersToggle: 'insights', meetingSummaryToggle: 'insights', copySummary: 'insights', actionItemsToggle: 'insights', copyActionItems: 'insights',
+  trimStartHandle: 'editing', trimEndHandle: 'editing', setTrimStart: 'editing', setTrimEnd: 'editing', saveTrimmedCopy: 'editing', addCutSegment: 'editing', clearCutSegments: 'editing', saveMultiCutCopy: 'editing',
+  cancelRecoveryButton: 'recovery', recordingKindVideoButton: 'recording', recordingKindAudioButton: 'recording', webcamQuickToggle: 'webcam', preflightMicMuteButton: 'microphone', recordDestinationChange: 'recording', startButton: 'recording', cancelAiJob: 'ai', recordingMicToggle: 'microphone', pausePrimaryButton: 'recording', bookmarkPrimaryButton: 'bookmarks', retryRecovery: 'recovery', showRecoveryFiles: 'recovery', dismissRecoveryNotice: 'recovery',
+  settingsCollapseButton: 'settings', recordAdvancedToggle: 'settings', changeRecordingFolder: 'settings', resetRecordingFolder: 'settings', appToolsToggle: 'settings', windowCapturePrivacyToggle: 'privacy', analyticsToggle: 'privacy', voiceEnrollButton: 'my_voice', voiceClearButton: 'my_voice', openModelManager: 'ai', openDiagnostics: 'diagnostics', sendFeedback: 'feedback', exportDiagnosticsQuick: 'diagnostics', snapshotRecording: 'snapshot', bookmarkRecording: 'bookmarks', pauseButton: 'recording', stopButton: 'recording', recordingBookmarkTextSave: 'bookmarks', clearRegion: 'capture', applyRegion: 'capture', createCategoryConfirm: 'library',
+  exportDiagnostics: 'diagnostics', copyDiagnostics: 'diagnostics', openLogs: 'diagnostics', sendFeedbackDiagnostics: 'feedback', checkUpdates: 'updates', installUpdate: 'updates', openModelsFolder: 'ai', refreshModels: 'ai', themeClassicChoice: 'appearance', themeStudioChoice: 'appearance', themesAppearanceToggle: 'appearance', analyticsReminderContinue: 'privacy', analyticsReminderEnable: 'privacy', firstRunChooseFolder: 'onboarding', completeFirstRun: 'onboarding'
+});
+
+const anonymousSafeValues = new Set([
+  'captureMode','compactCaptureMode','compactQuality','compactFrameRate','playbackSpeed','exportAudioFormat',
+  'webcamPosition','webcamSize','webcamShape','computerAudioMode','noiseReduction','quality','frameRate','videoCodec','filenameStyle','recordCountdown'
+]);
+
+function wireAnonymousUsageInstrumentation() {
+  if (document.documentElement.dataset.analyticsInstrumentation === '1') return;
+  document.documentElement.dataset.analyticsInstrumentation = '1';
+  document.addEventListener('click', (event) => {
+    const control = event.target?.closest?.('button[id]');
+    if (!control?.id) return;
+    window.recorderAPI.logEvent?.('info', 'ui.control-used', {
+      control: control.id,
+      controlType: 'button',
+      group: anonymousUsageGroups[control.id] || 'other',
+      action: 'click'
+    });
+  }, true);
+  document.addEventListener('change', (event) => {
+    const control = event.target;
+    if (!control?.id || !['SELECT', 'INPUT'].includes(control.tagName)) return;
+    if (control.tagName === 'INPUT' && !['checkbox', 'range'].includes(String(control.type || '').toLowerCase())) return;
+    const payload = {
+      control: control.id,
+      controlType: control.tagName.toLowerCase(),
+      group: ['microphone','microphoneDevice','noiseReduction'].includes(control.id) ? 'microphone' : ['systemAudio','computerAudioMode'].includes(control.id) ? 'system_audio' : control.id.startsWith('webcam') || control.id === 'cameraDevice' ? 'webcam' : 'settings',
+      action: 'change'
+    };
+    if (control.type === 'checkbox') payload.value = control.checked ? 'on' : 'off';
+    else if (anonymousSafeValues.has(control.id)) payload.value = String(control.value || '').slice(0, 60);
+    else if (control.type === 'range') payload.value = 'adjusted';
+    window.recorderAPI.logEvent?.('info', 'ui.control-used', payload);
+  }, true);
+  window.addEventListener('error', (event) => {
+    window.recorderAPI.logEvent?.('error', 'renderer.javascript-error', { errorName: event.error?.name || 'Error' });
+  });
+  window.addEventListener('unhandledrejection', (event) => {
+    window.recorderAPI.logEvent?.('error', 'renderer.unhandled-rejection', { errorName: event.reason?.name || 'Error' });
+  });
+}
+
+function analyticsWordCountBucket(text) {
+  const count = String(text || '').trim().split(/\s+/).filter(Boolean).length;
+  if (count < 50) return '<50';
+  if (count < 250) return '50-249';
+  if (count < 1000) return '250-999';
+  if (count < 5000) return '1k-4.9k';
+  return '5k+';
+}
+
+async function openFeedbackPage() {
+  const result = await window.recorderAPI.sendFeedback?.().catch((error) => ({ opened: false, error: friendlyErrorText(error) }));
+  if (!result?.opened) showToast(result?.error || 'Could not open the PulseStudio feedback page.', 'warning', 4200);
 }
 
 function permissionHealthLabel(value, optional = false) {
@@ -7028,7 +7151,7 @@ async function refreshDiagnostics() {
   try {
     const d = await window.recorderAPI.getDiagnostics();
     state.lastDiagnostics = d;
-    $('aboutVersion').textContent = d.version || state.platformInfo?.version || '0.2.105';
+    $('aboutVersion').textContent = d.version || state.platformInfo?.version || '0.2.118';
     $('diagnosticBuild').textContent = d.packaged ? 'Installed / packaged' : 'Development build';
     $('diagnosticPlatform').textContent = `${d.platform} · ${d.arch} · ${d.release}`;
     const encoding = d.videoEncoding || {};
@@ -7042,6 +7165,7 @@ async function refreshDiagnostics() {
     $('diagnosticAi').textContent = d.ai?.workerAlive ? `✓ Ready${d.ai.activeJobs ? ` · ${d.ai.activeJobs} active` : ''}` : (d.ai?.activeJobs ? 'Starting…' : 'Ready when needed');
     $('diagnosticModels').textContent = `${d.models?.installed || 0}/${d.models?.total || 0} installed · ${formatBytes(d.models?.bytes || 0)}`;
     $('diagnosticRecovery').textContent = d.recovery?.active ? 'Recording in progress' : d.recovery?.pending ? `${d.recovery.pending} recording${d.recovery.pending === 1 ? '' : 's'} need recovery` : '✓ None pending';
+    updateAnalyticsUi(d.analytics);
     updateUpdateUi(d.update);
 
     const permissionProblem = ['screen', 'microphone'].some((key) => ['denied', 'restricted'].includes(String(d.permissions?.[key] || '').toLowerCase()));
@@ -7125,14 +7249,16 @@ async function consumeStartupRecoveryNotice() {
 }
 
 async function showFirstRunSetupIfNeeded() {
-  if (localStorage.getItem('firstRunSetupCompleted') === '1') return;
+  if (localStorage.getItem('firstRunSetupCompleted') === '1') return false;
   const dialog = $('firstRunDialog');
   const returnToMini = state.viewMode === 'compact';
   if (returnToMini) await applyViewMode('full', true);
   dialog.dataset.returnToMini = returnToMini ? '1' : '0';
   $('firstRunFolder').textContent = `Current folder: ${compactRecordingFolderLabel(state.recordingsDirectory || '')}`;
   dialog.showModal();
+  return true;
 }
+
 
 async function init() {
   const savedTheme = localStorage.getItem('theme');
@@ -7213,7 +7339,7 @@ async function init() {
   state.platformInfo = info;
   applyStartupRecoveryState({ inProgress: Boolean(info.startupRecoveryInProgress) });
   document.documentElement.dataset.platform = info.platform;
-  $('aboutVersion').textContent = info.version || '0.2.105';
+  $('aboutVersion').textContent = info.version || '0.2.118';
   renderWindowCapturePrivacy(await window.recorderAPI.getWindowCapturePrivacy?.().catch(() => ({ enabled: true, supported: info.platform === 'darwin' || info.platform === 'win32' })) || { enabled: true, supported: true });
   const applicationAudioOption = $('computerAudioMode')?.querySelector('option[value="application"]');
   if (applicationAudioOption && !info.applicationAudioSupported) applicationAudioOption.disabled = true;
@@ -7249,6 +7375,9 @@ async function init() {
   });
   state.unsubscribeUpdateStatus = window.recorderAPI.onUpdateStatus(updateUpdateUi);
   updateUpdateUi(await window.recorderAPI.getUpdateStatus().catch(() => ({ state: 'unavailable' })));
+  state.unsubscribeAnalyticsStatus = window.recorderAPI.onAnalyticsStatus?.(updateAnalyticsUi);
+  updateAnalyticsUi(await window.recorderAPI.getAnalyticsStatus?.().catch(() => ({ configured: false, enabled: false })));
+  wireAnonymousUsageInstrumentation();
   const aiSnapshot = await window.recorderAPI.getAiStatus().catch(() => null);
   for (const job of aiSnapshot?.jobs || []) handleAiStatus(job);
   clearInterval(state.aiStatusTicker);
@@ -7396,10 +7525,10 @@ async function init() {
     previewFilenameTemplate();
     updateReadiness();
   });
-  $('themeToggle').addEventListener('click', () => applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
+  $('themeToggle').addEventListener('click', () => { const next = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'; window.recorderAPI.logEvent?.('info', 'ui.theme_changed', { theme: next }); applyTheme(next); });
   $('themesButton')?.addEventListener('click', openThemesDialog);
-  $('themeClassicChoice')?.addEventListener('click', () => applyUiTheme('classic'));
-  $('themeStudioChoice')?.addEventListener('click', () => applyUiTheme('studio'));
+  $('themeClassicChoice')?.addEventListener('click', () => { window.recorderAPI.logEvent?.('info', 'ui.studio_theme_changed', { ui_theme: 'classic' }); applyUiTheme('classic'); });
+  $('themeStudioChoice')?.addEventListener('click', () => { window.recorderAPI.logEvent?.('info', 'ui.studio_theme_changed', { ui_theme: 'studio' }); applyUiTheme('studio'); });
   $('themesAppearanceToggle')?.addEventListener('click', () => applyTheme(document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark'));
   $('captureMode').addEventListener('change', () => { localStorage.setItem('captureMode', $('captureMode').value); if ($('compactCaptureMode')) $('compactCaptureMode').value = $('captureMode').value; updateCaptureModeUi(); previewFilenameTemplate(); updateReadiness(); });
   $('chooseRegion').addEventListener('click', openRegionDialog);
@@ -7438,6 +7567,24 @@ async function init() {
   $('helpButton').addEventListener('click', () => $('helpDialog').showModal());
   $('aboutButton').addEventListener('click', openAboutDiagnostics);
   $('openDiagnostics')?.addEventListener('click', openAboutDiagnostics);
+  $('analyticsToggle')?.addEventListener('click', async () => {
+    const button = $('analyticsToggle');
+    if (!button || button.disabled) return;
+    const next = button.getAttribute('aria-pressed') !== 'true';
+    const status = await window.recorderAPI.setAnalyticsEnabled(next).catch(() => null);
+    if (status) updateAnalyticsUi(status);
+  });
+  $('sendFeedback')?.addEventListener('click', openFeedbackPage);
+  $('sendFeedbackDiagnostics')?.addEventListener('click', openFeedbackPage);
+  $('analyticsReminderEnable')?.addEventListener('click', async () => {
+    const button = $('analyticsReminderEnable');
+    if (button) button.disabled = true;
+    const status = await window.recorderAPI.setAnalyticsEnabled(true).catch(() => null);
+    if (status) updateAnalyticsUi(status);
+    await closeAnalyticsReminder();
+    if (button) button.disabled = false;
+  });
+  $('analyticsReminderContinue')?.addEventListener('click', closeAnalyticsReminder);
   $('openModelManager')?.addEventListener('click', async () => { $('modelManagerDialog').showModal(); await refreshModelManager(); });
   $('refreshModels')?.addEventListener('click', refreshModelManager);
   $('openModelsFolder')?.addEventListener('click', () => window.recorderAPI.openLocalModelsFolder());
@@ -7486,7 +7633,12 @@ async function init() {
   });
   $('showRecoveryFiles')?.addEventListener('click', () => window.recorderAPI.openRecoveryFolder());
   $('dismissRecoveryNotice')?.addEventListener('click', hideRecoveryNotice);
-  await showFirstRunSetupIfNeeded();
+  const firstRunShown = await showFirstRunSetupIfNeeded();
+  if (firstRunShown) {
+    $('firstRunDialog')?.addEventListener('close', () => { setTimeout(() => { void showAnalyticsReminderIfDisabled(); }, 180); }, { once: true });
+  } else {
+    await showAnalyticsReminderIfDisabled();
+  }
   $('copyDiagnostics')?.addEventListener('click', async () => { const d = state.lastDiagnostics || await refreshDiagnostics(); if (!d) return; await window.recorderAPI.copyText(JSON.stringify(d, null, 2)); showToast('Diagnostics copied'); });
   async function exportDiagnosticsFromUi(triggerButton = null) {
     const buttons = [$('exportDiagnostics'), $('exportDiagnosticsQuick')].filter(Boolean);
@@ -7646,12 +7798,14 @@ async function init() {
     state.voiceHighlightsVisible = !state.voiceHighlightsVisible;
     localStorage.setItem('voiceHighlightsVisible', state.voiceHighlightsVisible ? '1' : '0');
     renderPlaybackVoiceHighlights();
+    window.recorderAPI.logEvent?.('info', 'playback.voice_highlights_toggled', { visible: state.voiceHighlightsVisible });
   });
   $('toggleChapterSidebar')?.addEventListener('click', () => {
     if (!state.selectedPlaybackPath) return;
     state.chapterSidebarVisible = !state.chapterSidebarVisible;
     localStorage.setItem('chapterSidebarVisible', state.chapterSidebarVisible ? '1' : '0');
     renderPlaybackChapterSidebar();
+    window.recorderAPI.logEvent?.('info', 'playback.timeline_toggled', { visible: state.chapterSidebarVisible });
   });
   $('hideChapterSidebar')?.addEventListener('click', () => {
     state.chapterSidebarVisible = false;
@@ -7663,6 +7817,7 @@ async function init() {
     state.playbackSpeedValue = Number($('playbackSpeed').value) || 1;
     $('playbackVideo').playbackRate = state.playbackSpeedValue;
     localStorage.setItem('playbackSpeed', String(state.playbackSpeedValue));
+    window.recorderAPI.logEvent?.('info', 'playback.speed_changed', { speed: state.playbackSpeedValue });
   });
   $('playbackProgress').addEventListener('input', (event) => {
     const video = $('playbackVideo');
@@ -7702,7 +7857,7 @@ async function init() {
   $('stickyNextBookmark')?.addEventListener('click', () => seekToPlaybackBookmark(1));
   $('playbackFullscreen').addEventListener('click', async () => {
     pulsePlayerControl($('playbackFullscreen'));
-    try { setPlayerFullscreenUi(await window.recorderAPI.togglePlayerFullscreen()); }
+    try { const fsState = await window.recorderAPI.togglePlayerFullscreen(); setPlayerFullscreenUi(fsState); window.recorderAPI.logEvent?.('info', 'playback.fullscreen_toggled', { enabled: Boolean(fsState) }); }
     catch (error) { $('playerStatus').textContent = `Could not enter Full Screen. ${friendlyErrorText(error)}`; }
   });
   $('playbackVideo').addEventListener('click', () => {
@@ -7711,7 +7866,7 @@ async function init() {
   });
   $('videoPlayerShell').addEventListener('dblclick', async (event) => {
     if (event.target.closest('.player-toolbar')) return;
-    try { setPlayerFullscreenUi(await window.recorderAPI.togglePlayerFullscreen()); } catch {}
+    try { const fsState = await window.recorderAPI.togglePlayerFullscreen(); setPlayerFullscreenUi(fsState); window.recorderAPI.logEvent?.('info', 'playback.fullscreen_toggled', { enabled: Boolean(fsState) }); } catch {}
   });
   $('bookmarkInlineSave')?.addEventListener('click', (event) => { event.preventDefault(); event.stopPropagation(); saveBookmarkInlineEditor(); });
   $('bookmarkInlineInput')?.addEventListener('click', (event) => event.stopPropagation());
@@ -7750,18 +7905,20 @@ async function init() {
     localStorage.setItem('playbackSubtitles', state.subtitlePreference ? '1' : '0');
     updateSubtitleOverlay();
     updatePlaybackSubtitleControlState();
+    window.recorderAPI.logEvent?.('info', 'playback.captions_toggled', { enabled: next });
   });
   $('openPlaybackTranscript').addEventListener('click', () => {
     if (!state.selectedPlaybackPath) return;
     state.transcriptVisible = true;
     loadTranscriptIntoPanel(state.selectedPlaybackPath, state.playbackTranscript, false);
     $('transcriptPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    window.recorderAPI.logEvent?.('info', 'playback.transcript_opened', {});
   });
   $('copyPlaybackTranscript').addEventListener('click', async () => {
     if (state.playbackTranscript.text) { await window.recorderAPI.copyText(state.playbackTranscript.text); showToast('Transcript copied'); }
     closePlaybackMoreMenu();
   });
-  $('snapshotPlayback').addEventListener('click', () => { pulsePlayerControl($('snapshotPlayback')); takePlaybackSnapshot(); });
+  $('snapshotPlayback').addEventListener('click', () => { pulsePlayerControl($('snapshotPlayback')); window.recorderAPI.logEvent?.('info', 'playback.snapshot', {}); takePlaybackSnapshot(); });
   $('playbackVideo').addEventListener('loadeddata', () => {
     const video = $('playbackVideo');
     const shell = $('videoPlayerShell');
@@ -7949,6 +8106,7 @@ async function init() {
   });
 
   state.unsubscribeShortcuts = window.recorderAPI.onShortcutAction(async (action) => {
+    window.recorderAPI.logEvent?.('info', 'ui.shortcut-used', { shortcut: String(action || ''), context: state.currentWorkspace || 'capture' });
     if (action === 'record-toggle') {
       if (state.mediaRecorder && state.mediaRecorder.state !== 'inactive') await stopRecording();
       else await startRecording();
@@ -7987,13 +8145,13 @@ async function init() {
     }
     const tag = event.target?.tagName?.toLowerCase();
     if (['input', 'textarea', 'select', 'button'].includes(tag)) return;
-    if (event.code === 'Space') { event.preventDefault(); togglePlayback(); }
-    else if (event.key === 'ArrowLeft') { event.preventDefault(); seekPlayback(event.shiftKey ? -5 : -1); }
-    else if (event.key === 'ArrowRight') { event.preventDefault(); seekPlayback(event.shiftKey ? 5 : 1); }
-    else if (event.key.toLowerCase() === 'j') { event.preventDefault(); seekPlayback(-5); }
-    else if (event.key.toLowerCase() === 'l') { event.preventDefault(); seekPlayback(5); }
-    else if (event.key.toLowerCase() === 'b') { event.preventDefault(); openBookmarkInlineEditor(); }
-    else if (event.key.toLowerCase() === 'm') { event.preventDefault(); togglePlaybackMute(); }
+    if (event.code === 'Space') { event.preventDefault(); window.recorderAPI.logEvent?.('info', 'ui.shortcut-used', { shortcut: 'space', context: 'playback' }); togglePlayback(); }
+    else if (event.key === 'ArrowLeft') { event.preventDefault(); window.recorderAPI.logEvent?.('info', 'ui.shortcut-used', { shortcut: event.shiftKey ? 'shift-left' : 'left', context: 'playback' }); seekPlayback(event.shiftKey ? -5 : -1); }
+    else if (event.key === 'ArrowRight') { event.preventDefault(); window.recorderAPI.logEvent?.('info', 'ui.shortcut-used', { shortcut: event.shiftKey ? 'shift-right' : 'right', context: 'playback' }); seekPlayback(event.shiftKey ? 5 : 1); }
+    else if (event.key.toLowerCase() === 'j') { event.preventDefault(); window.recorderAPI.logEvent?.('info', 'ui.shortcut-used', { shortcut: 'j', context: 'playback' }); seekPlayback(-5); }
+    else if (event.key.toLowerCase() === 'l') { event.preventDefault(); window.recorderAPI.logEvent?.('info', 'ui.shortcut-used', { shortcut: 'l', context: 'playback' }); seekPlayback(5); }
+    else if (event.key.toLowerCase() === 'b') { event.preventDefault(); window.recorderAPI.logEvent?.('info', 'ui.shortcut-used', { shortcut: 'b', context: 'playback' }); openBookmarkInlineEditor(); }
+    else if (event.key.toLowerCase() === 'm') { event.preventDefault(); window.recorderAPI.logEvent?.('info', 'ui.shortcut-used', { shortcut: 'm', context: 'playback' }); togglePlaybackMute(); }
   });
 
   // View mode was already restored before the first visible frame.

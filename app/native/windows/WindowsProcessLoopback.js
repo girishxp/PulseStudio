@@ -117,8 +117,8 @@ async function resolveProcessForWindow({ sourceId, windowTitle, runProcess }) {
   const encodedTitle = Buffer.from(String(windowTitle || ''), 'utf8').toString('base64');
   const script = [
     "$ErrorActionPreference = 'Stop'",
-    "$hwndText = $env:SCREEN_RECORDER_HWND",
-    "$titleB64 = $env:SCREEN_RECORDER_WINDOW_TITLE_B64",
+    "$hwndText = $env:PULSESTUDIO_HWND",
+    "$titleB64 = $env:PULSESTUDIO_WINDOW_TITLE_B64",
     "$title = ''",
     "if ($titleB64) { try { $title = [Text.Encoding]::UTF8.GetString([Convert]::FromBase64String($titleB64)) } catch {} }",
     "$candidate = $null",
@@ -142,8 +142,8 @@ async function resolveProcessForWindow({ sourceId, windowTitle, runProcess }) {
   ], {
     env: {
       ...process.env,
-      SCREEN_RECORDER_HWND: hwnd || '',
-      SCREEN_RECORDER_WINDOW_TITLE_B64: encodedTitle
+      PULSESTUDIO_HWND: hwnd || '',
+      PULSESTUDIO_WINDOW_TITLE_B64: encodedTitle
     }
   });
 
