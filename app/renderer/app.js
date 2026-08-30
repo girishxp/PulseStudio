@@ -112,6 +112,31 @@ function showFastTooltip(target) {
   }, fastTooltipDelay(target));
 }
 
+function showFastTooltipForClick(target, duration = 1800) {
+  if (!target || document.body.classList.contains('manual-window-dragging')) return;
+  hideFastTooltip();
+  const text = String(target.getAttribute('title') || target.dataset.fastTooltipTitle || '').trim();
+  if (!text) return;
+
+  target.dataset.fastTooltipTitle = text;
+  target.removeAttribute('title');
+  fastTooltipState.target = target;
+  fastTooltipState.text = text;
+  fastTooltipState.previousDescribedBy = target.getAttribute('aria-describedby');
+  const tooltip = fastTooltipState.tooltip;
+  if (!tooltip) return;
+  const describedBy = [fastTooltipState.previousDescribedBy, tooltip.id].filter(Boolean).join(' ');
+  target.setAttribute('aria-describedby', describedBy);
+  tooltip.textContent = text;
+  if (tooltip.showPopover && !tooltip.matches(':popover-open')) tooltip.showPopover();
+  tooltip.setAttribute('aria-hidden', 'false');
+  positionFastTooltip();
+  tooltip.classList.add('is-visible');
+  fastTooltipState.showTimer = setTimeout(() => {
+    if (fastTooltipState.target === target) hideFastTooltip();
+  }, Math.max(700, Number(duration) || 1800));
+}
+
 function initFastTooltips() {
   if (fastTooltipState.tooltip) return;
   const tooltip = document.createElement('div');
@@ -125,7 +150,7 @@ function initFastTooltips() {
 
   document.addEventListener('pointerover', (event) => {
     const target = fastTooltipTarget(event.target);
-    if (!target || target === fastTooltipState.target) return;
+    if (!target || target === fastTooltipState.target || target.dataset.tooltipClickOnly === 'true') return;
     showFastTooltip(target);
   }, true);
   document.addEventListener('pointerout', (event) => {
@@ -143,7 +168,7 @@ function initFastTooltips() {
   }, true);
   document.addEventListener('focusin', (event) => {
     const target = fastTooltipTarget(event.target);
-    if (target && target.dataset.tooltipHoverOnly !== 'true') showFastTooltip(target);
+    if (target && target.dataset.tooltipHoverOnly !== 'true' && target.dataset.tooltipClickOnly !== 'true') showFastTooltip(target);
   }, true);
   document.addEventListener('focusout', (event) => {
     if (fastTooltipState.target === event.target) hideFastTooltip();
@@ -7045,7 +7070,7 @@ function scheduleUpdateDialogOpen() {
     if (!shouldOpen || dialog.open) return;
     const anotherDialogOpen = Array.from(document.querySelectorAll('dialog[open]')).some((node) => node !== dialog);
     if (anotherDialogOpen) {
-      state.updateDialogRetryTimer = setTimeout(tryOpen, 900);
+      state.updateDialogRetryTimer = setTimeout(tryOpen, 250);
       return;
     }
     try { dialog.showModal(); } catch {}
@@ -7083,6 +7108,7 @@ function renderUpdateDialog(value = {}) {
   const choosing = value.state === 'available' || (value.state === 'error' && value.canDownload);
   later?.classList.toggle('hidden', !choosing);
   skip?.classList.toggle('hidden', !choosing);
+  dialog.querySelector('.update-available-actions')?.classList.toggle('single-action', !choosing);
   if (primary) {
     primary.disabled = value.state === 'downloading' || value.state === 'installing' || (value.state === 'error' && !value.canDownload);
     primary.textContent = value.state === 'downloading'
@@ -7252,7 +7278,7 @@ async function refreshDiagnostics() {
   try {
     const d = await window.recorderAPI.getDiagnostics();
     state.lastDiagnostics = d;
-    $('aboutVersion').textContent = d.version || state.platformInfo?.version || '0.2.127';
+    $('aboutVersion').textContent = d.version || state.platformInfo?.version || '0.2.128';
     $('diagnosticBuild').textContent = d.packaged ? 'Installed / packaged' : 'Development build';
     $('diagnosticPlatform').textContent = `${d.platform} · ${d.arch} · ${d.release}`;
     const encoding = d.videoEncoding || {};
@@ -7516,7 +7542,7 @@ async function init() {
   state.platformInfo = info;
   applyStartupRecoveryState({ inProgress: Boolean(info.startupRecoveryInProgress) });
   document.documentElement.dataset.platform = info.platform;
-  $('aboutVersion').textContent = info.version || '0.2.127';
+  $('aboutVersion').textContent = info.version || '0.2.128';
   renderWindowCapturePrivacy(await window.recorderAPI.getWindowCapturePrivacy?.().catch(() => ({ enabled: true, supported: info.platform === 'darwin' || info.platform === 'win32' })) || { enabled: true, supported: true });
   const applicationAudioOption = $('computerAudioMode')?.querySelector('option[value="application"]');
   if (applicationAudioOption && !info.applicationAudioSupported) applicationAudioOption.disabled = true;
@@ -7669,15 +7695,7 @@ async function init() {
     const currentIndex = Math.max(0, levels.indexOf(state.transparencyPercent));
     const nextValue = levels[(currentIndex + 1) % levels.length];
     await applyTransparency(nextValue);
-    if (state.viewMode !== 'compact') {
-      showToast(
-        nextValue > 0
-          ? `Mini View transparency set to ${nextValue}%. Full View stays opaque; switch to Mini View to see it.`
-          : 'Mini View transparency set to 0%. Full View always stays opaque.',
-        'success',
-        3600
-      );
-    }
+    showFastTooltipForClick($('transparencyButton'), 1800);
   });
   $('alwaysOnTopButton').addEventListener('click', () => applyAlwaysOnTop(!state.alwaysOnTop));
   $('compactCaptureSettingsToggle').addEventListener('click', () => applyCompactCaptureCollapsed(!state.compactCaptureCollapsed));

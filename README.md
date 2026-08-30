@@ -1,7 +1,17 @@
-# PulseStudio v0.2.127
+# PulseStudio v0.2.128
 
 
 
+
+## v0.2.128 faster update prompt and compact transparency feedback
+
+- The automatic GitHub Release check now starts about 2.5 seconds after launch instead of waiting 15 seconds, so available-update prompts appear substantially sooner when PulseStudio is idle.
+- While PulseStudio remains open, automatic GitHub Release checks now run about every 15 minutes instead of every 6 hours, so a release published after launch is discovered much sooner.
+- The update dialog retries opening every 250 ms after another modal closes, reducing visible lag without increasing GitHub request frequency.
+- Update actions use an explicit three-column grid with identical height, alignment, margin reset, and no primary-button outer shadow, keeping Skip This Version, Remind Me Later, and Update Now on one clean row.
+- Transparency changes no longer use stacked application toasts. Clicking the transparency control shows one small anchored tooltip for the newly selected Mini View level; hovering or merely focusing that control does not show the explanatory message.
+- Full View remains opaque and the selected transparency still applies only to Mini View.
+- Recording, microphone, audio cleanup/mixing, transcription, recovery, and unsigned macOS update installation behavior are unchanged from v0.2.127.
 
 ## v0.2.127 updater layout and unsigned macOS reopen
 

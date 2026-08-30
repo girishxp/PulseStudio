@@ -4,6 +4,8 @@
   "repo": "PulseStudio",
   "assetPattern": "^PulseStudio-cross-platform-v([0-9]+\\.[0-9]+\\.[0-9]+)\\.zip$",
   "checkIntervalHours": 6,
+  "checkIntervalMinutes": 15,
+  "startupCheckDelayMs": 2500,
   "channel": "latest",
   "apiBaseUrl": "https://api.github.com",
   "remindLaterHours": 24

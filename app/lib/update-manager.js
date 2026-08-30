@@ -177,11 +177,15 @@ class RecoveryAwareUpdateManager {
       return this.emit({ state: 'unconfigured', configured: false, message: 'Automatic updates are not configured for this build.' });
     }
     this.emit({ state: 'idle', configured: true, message: 'Automatic GitHub Release checks are enabled.', canDownload: false });
-    setTimeout(() => this.check(false), 15000).unref?.();
-    const intervalHours = Math.max(1, Number(this.config.checkIntervalHours || 6));
+    const startupDelayMs = Math.max(1000, Number(this.config.startupCheckDelayMs || 2500));
+    setTimeout(() => this.check(false), startupDelayMs).unref?.();
+    const configuredMinutes = Number(this.config.checkIntervalMinutes);
+    const intervalMinutes = Number.isFinite(configuredMinutes) && configuredMinutes > 0
+      ? Math.max(5, configuredMinutes)
+      : Math.max(60, Number(this.config.checkIntervalHours || 6) * 60);
     this.timer = setInterval(() => {
       if (this.state.state === 'deferred') void this.resumeDeferred();
-      else if (Date.now() - this.lastAutoCheck >= intervalHours * 60 * 60 * 1000) void this.check(false);
+      else if (Date.now() - this.lastAutoCheck >= intervalMinutes * 60 * 1000) void this.check(false);
     }, 60 * 1000);
     this.timer.unref?.();
     return this.snapshot();
