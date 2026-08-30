@@ -202,6 +202,11 @@ let keyHook = null;
 let keyHookKeyMap = null;
 let keyHookListener = null;
 let keyHookActive = false;
+let keyHookRequested = false;
+let systemWakeQuietUntil = 0;
+let systemWakeGuardTimer = null;
+let globalShortcutsSuspendedForPower = false;
+const SYSTEM_WAKE_INPUT_GUARD_MS = 2500;
 let fullWindowBounds = null;
 let compactWindowBounds = null;
 let activeWindowMode = 'full';
@@ -551,6 +556,10 @@ function compactBoundsMatch(a, b) {
 // back.
 function repairCompactWindowPosition() {
   if (process.platform !== 'darwin') return false;
+  if (Date.now() < systemWakeQuietUntil) {
+    scheduleCompactWindowPositionRepair(Math.max(120, systemWakeQuietUntil - Date.now() + 120));
+    return false;
+  }
   if (!mainWindow || mainWindow.isDestroyed() || activeWindowMode !== 'compact') return false;
   if (switchingWindowMode || activeManualWindowDrag) return false;
   const current = mainWindow.getBounds();
@@ -1339,13 +1348,27 @@ function buildKeyHookMap(UiohookKey) {
   return reverse;
 }
 
-function stopKeyHook() {
+function stopKeyHook({ clearRequested = true } = {}) {
+  if (clearRequested) keyHookRequested = false;
   if (!keyHook || !keyHookActive) return;
   try { keyHook.stop(); } catch {}
   keyHookActive = false;
 }
 
 function startKeyHook() {
+  keyHookRequested = true;
+  // v0.2.129: never install the libuiohook CGEventTap on macOS. The optional
+  // Show keystrokes overlay is not worth risking system-wide keyboard/mouse
+  // stalls after lid sleep/wake. Windows/Linux keep the existing capability.
+  if (process.platform === 'darwin') {
+    keyHookActive = false;
+    return {
+      enabled: false,
+      disabledForPlatform: true,
+      reason: 'macos-input-safety',
+      error: 'Show keystrokes is disabled on macOS to keep keyboard and mouse input responsive after sleep and wake.'
+    };
+  }
   try {
     if (!keyHook) {
       const module = require('uiohook-napi');
@@ -1373,6 +1396,45 @@ function startKeyHook() {
     keyHookActive = false;
     return { enabled: false, error: error.message };
   }
+}
+
+function suspendInputObserversForSystemSleep(reason = 'suspend') {
+  clearTimeout(systemWakeGuardTimer);
+  systemWakeGuardTimer = null;
+  systemWakeQuietUntil = Number.MAX_SAFE_INTEGER;
+  // A native keyboard hook must be removed before macOS tears down the user
+  // session. Preserve intent only for non-macOS platforms; macOS never restarts it.
+  stopKeyHook({ clearRequested: false });
+  try {
+    if (typeof globalShortcut.setSuspended === 'function') {
+      globalShortcut.setSuspended(true);
+      globalShortcutsSuspendedForPower = true;
+    }
+  } catch {}
+  clearTimeout(compactPositionRepairTimer);
+  compactPositionRepairTimer = null;
+  activityLog('info', 'system.input-guard-suspended', { reason, keyHookRequested: Boolean(keyHookRequested) });
+}
+
+function resumeInputObserversAfterSystemWake(reason = 'resume') {
+  clearTimeout(systemWakeGuardTimer);
+  systemWakeQuietUntil = Date.now() + SYSTEM_WAKE_INPUT_GUARD_MS;
+  // Do not focus, move or query/restart global input hooks during the first
+  // moments after wake. The user's keyboard and pointer always get priority.
+  systemWakeGuardTimer = setTimeout(() => {
+    systemWakeGuardTimer = null;
+    systemWakeQuietUntil = 0;
+    if (globalShortcutsSuspendedForPower) {
+      try {
+        if (typeof globalShortcut.setSuspended === 'function') globalShortcut.setSuspended(false);
+      } catch {}
+      globalShortcutsSuspendedForPower = false;
+    }
+    scheduleCompactWindowPositionRepair(180);
+    setTimeout(() => { void updateManager?.resumeDeferred?.(); }, 0);
+    activityLog('info', 'system.input-guard-resumed', { reason, guardMs: SYSTEM_WAKE_INPUT_GUARD_MS });
+  }, SYSTEM_WAKE_INPUT_GUARD_MS);
+  systemWakeGuardTimer.unref?.();
 }
 
 function recordingsDirectorySettingsPath() {
@@ -4776,6 +4838,9 @@ async function stopBackgroundWork() {
 }
 
 function updateSafetyState() {
+  if (Date.now() < systemWakeQuietUntil) {
+    return { safe: false, blocker: 'resume', reason: 'the Mac finishes waking', message: 'Update check is waiting briefly after wake so keyboard and mouse input stay immediately responsive.' };
+  }
   if (hasActiveCapture()) {
     return { safe: false, blocker: 'recording', reason: 'the active recording stops', message: 'Update check paused — a recording is currently in progress.' };
   }
@@ -4953,6 +5018,13 @@ function diagnosticsSnapshot() {
       aiJobs: ai.jobs.length,
       finalizing: sealedRecordingSessions.size,
       recovery: Boolean(startupRecoveryInProgress),
+      inputSafety: {
+        wakeGuardActive: Date.now() < systemWakeQuietUntil,
+        globalShortcutsSuspended: Boolean(globalShortcutsSuspendedForPower),
+        keyHookActive: Boolean(keyHookActive),
+        keyHookRequested: Boolean(keyHookRequested),
+        keystrokeOverlaySupported: process.platform !== 'darwin'
+      },
       mediaProcesses: backgroundMediaProcesses
     },
     recordingHealth: recordingHealthSnapshot(),
@@ -5074,8 +5146,10 @@ app.whenReady().then(async () => {
     try { screen.on('display-metrics-changed', repairAfterDisplayChange); } catch {}
     try { screen.on('display-added', repairAfterDisplayChange); } catch {}
     try { screen.on('display-removed', repairAfterDisplayChange); } catch {}
-    try { powerMonitor.on('resume', () => scheduleCompactWindowPositionRepair(350)); } catch {}
-    try { powerMonitor.on('unlock-screen', () => scheduleCompactWindowPositionRepair(220)); } catch {}
+    try { powerMonitor.on('suspend', () => suspendInputObserversForSystemSleep('suspend')); } catch {}
+    try { powerMonitor.on('lock-screen', () => suspendInputObserversForSystemSleep('lock-screen')); } catch {}
+    try { powerMonitor.on('resume', () => resumeInputObserversAfterSystemWake('resume')); } catch {}
+    try { powerMonitor.on('unlock-screen', () => resumeInputObserversAfterSystemWake('unlock-screen')); } catch {}
   }
 
   try {
@@ -5147,6 +5221,8 @@ app.on('before-quit', () => {
   clearTimeout(startupWindowShowFailsafeTimer);
   clearTimeout(compactBoundsSaveTimer);
   clearTimeout(compactPositionRepairTimer);
+  clearTimeout(systemWakeGuardTimer);
+  systemWakeGuardTimer = null;
   if (compactWindowBounds) persistCompactWindowBounds(compactWindowBounds);
   updateManager?.shutdown?.();
   void analyticsManager?.shutdown?.();
@@ -5390,7 +5466,11 @@ ipcMain.handle('app:platform-info', () => {
       ? { supported: true, message: 'Selected application audio is available on this Mac.' }
       : windowsCapability,
     videoEncoding: videoEncoderManager.capabilities(),
-    startupRecoveryInProgress: Boolean(startupRecoveryInProgress)
+    startupRecoveryInProgress: Boolean(startupRecoveryInProgress),
+    keystrokeOverlaySupported: process.platform !== 'darwin',
+    keystrokeOverlayReason: process.platform === 'darwin'
+      ? 'Disabled on macOS to keep keyboard and mouse input responsive after sleep and wake.'
+      : ''
   };
 });
 
@@ -5472,7 +5552,7 @@ ipcMain.handle('capture:cursor-position', () => {
 
 ipcMain.handle('capture:keystrokes-enabled', (_event, enabled) => {
   if (enabled) return startKeyHook();
-  stopKeyHook();
+  stopKeyHook({ clearRequested: true });
   return { enabled: false };
 });
 

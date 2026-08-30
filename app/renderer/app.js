@@ -4729,7 +4729,10 @@ function updateRecordingKindUi() {
   document.body.classList.toggle('audio-only-recording', audioOnly);
   for (const id of ['quality', 'frameRate', 'videoCodec', 'showCursor', 'highlightCursor', 'showKeystrokes', 'webcamOverlay']) {
     const control = $(id);
-    if (control) control.disabled = audioOnly;
+    if (!control) continue;
+    const macInputSafetyBlock = id === 'showKeystrokes' && state.platformInfo?.keystrokeOverlaySupported === false;
+    control.disabled = audioOnly || macInputSafetyBlock;
+    if (macInputSafetyBlock) control.checked = false;
   }
   if ($('webcamSettings')) $('webcamSettings').classList.toggle('hidden', audioOnly || !$('webcamOverlay')?.checked);
   syncQuickRecordingControls();
@@ -6279,7 +6282,11 @@ async function startRecording() {
 
     if (!audioOnly && $('showKeystrokes').checked) {
       const hook = await window.recorderAPI.setKeystrokeCaptureEnabled(true);
-      if (!hook?.enabled) setStatus('Recording will continue normally, but the keystroke overlay is unavailable. Check accessibility/input permissions if you want to use it.', true);
+      if (!hook?.enabled) {
+        setStatus(hook?.disabledForPlatform
+          ? 'Recording continues normally. Show keystrokes is disabled on macOS so keyboard and mouse remain responsive after sleep/wake.'
+          : 'Recording will continue normally, but the keystroke overlay is unavailable. Check accessibility/input permissions if you want to use it.', true);
+      }
     }
 
     if (!audioOnly && $('webcamOverlay')?.checked) {
@@ -7278,7 +7285,7 @@ async function refreshDiagnostics() {
   try {
     const d = await window.recorderAPI.getDiagnostics();
     state.lastDiagnostics = d;
-    $('aboutVersion').textContent = d.version || state.platformInfo?.version || '0.2.128';
+    $('aboutVersion').textContent = d.version || state.platformInfo?.version || '0.2.129';
     $('diagnosticBuild').textContent = d.packaged ? 'Installed / packaged' : 'Development build';
     $('diagnosticPlatform').textContent = `${d.platform} · ${d.arch} · ${d.release}`;
     const encoding = d.videoEncoding || {};
@@ -7542,7 +7549,7 @@ async function init() {
   state.platformInfo = info;
   applyStartupRecoveryState({ inProgress: Boolean(info.startupRecoveryInProgress) });
   document.documentElement.dataset.platform = info.platform;
-  $('aboutVersion').textContent = info.version || '0.2.128';
+  $('aboutVersion').textContent = info.version || '0.2.129';
   renderWindowCapturePrivacy(await window.recorderAPI.getWindowCapturePrivacy?.().catch(() => ({ enabled: true, supported: info.platform === 'darwin' || info.platform === 'win32' })) || { enabled: true, supported: true });
   const applicationAudioOption = $('computerAudioMode')?.querySelector('option[value="application"]');
   if (applicationAudioOption && !info.applicationAudioSupported) applicationAudioOption.disabled = true;
@@ -7550,6 +7557,17 @@ async function init() {
     ? 'Select an application window to record only that app’s audio. Other application audio will be excluded where the operating system supports it.'
     : (info.applicationAudioCapability?.message || 'Selected application audio is unavailable on this system. System audio remains available.');
   if (!info.applicationAudioSupported && $('computerAudioMode')?.value === 'application') $('computerAudioMode').value = 'system';
+  const showKeystrokes = $('showKeystrokes');
+  if (showKeystrokes && info.keystrokeOverlaySupported === false) {
+    showKeystrokes.checked = false;
+    showKeystrokes.disabled = true;
+    const row = showKeystrokes.closest('.toggle-row');
+    if (row) {
+      row.title = info.keystrokeOverlayReason || 'Show keystrokes is unavailable on this Mac.';
+      const detail = row.querySelector('span');
+      if (detail) detail.textContent = 'Disabled on macOS so keyboard and mouse stay responsive after sleep/wake';
+    }
+  }
   state.recordingsDirectory = info.recordingsDirectory;
   updatePlaybackFolderLabel(info.recordingsDirectory);
   $('autosaveFolder').textContent = info.recordingsDirectory;

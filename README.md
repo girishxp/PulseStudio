@@ -1,6 +1,15 @@
-# PulseStudio v0.2.128
+# PulseStudio v0.2.129
 
 
+
+
+## v0.2.129 macOS sleep/wake input responsiveness
+
+- Prioritizes immediate keyboard and mouse availability when a Mac wakes from lid sleep.
+- Suspends PulseStudio global shortcuts before sleep/lock and restores them only after a short wake stabilization period.
+- Defers Mini View position repair and update checks during that stabilization window so wake-time work does not compete with user input.
+- Disables the optional native Show keystrokes overlay on macOS because its global input-hook dependency can produce system-wide keyboard/mouse lag. Windows and Linux keep the feature.
+- Recording, microphone, system-audio, mixing, transcription, speaker processing, playback, recovery, analytics, and updater installation behavior are otherwise unchanged.
 
 
 ## v0.2.128 faster update prompt and compact transparency feedback
