@@ -1,6 +1,16 @@
-# PulseStudio v0.2.126
+# PulseStudio v0.2.127
 
 
+
+
+## v0.2.127 updater layout and unsigned macOS reopen
+
+- The automatic update dialog keeps **Skip This Version**, **Remind Me Later**, and **Update Now** aligned on one row with equal heights and widths.
+- A complete Electron update still requires a brief process restart because main-process JavaScript is already loaded in memory; PulseStudio does not attempt an unsafe live code replacement.
+- On macOS, the portable updater no longer asks LaunchServices to open the newly downloaded `Start PulseStudio - macOS.command` after installation. That file can inherit macOS download quarantine and trigger the "Not Opened" Gatekeeper warning on unsigned distributions.
+- Instead, after the update files are verified and copied, PulseStudio reopens the already-installed official signed Electron runtime directly and passes the updated `app` directory to it.
+- The updater preserves `node_modules`; if the dependency manifest changes in a future release it refreshes dependencies before reopening. It also refreshes the launcher package hash so a later manual start does not unnecessarily reinstall unchanged dependencies.
+- PulseStudio does **not** remove or bypass macOS quarantine attributes.
 
 ## v0.2.126 Mini View-only transparency
 

@@ -351,18 +351,23 @@ class RecoveryAwareUpdateManager {
       return { command: 'powershell.exe', args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', helper], helper };
     }
     const helper = path.join(updatesDir, `apply-pulsestudio-v${version}.command`);
-    const launcher = path.join(appRoot, 'Start PulseStudio - macOS.command');
     const log = path.join(updatesDir, `update-v${version}.log`);
     const shell = process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash';
     const script = `#!${shell}\nset -eu\nexec >> ${shellQuote(log)} 2>&1\necho "PulseStudio update started: $(date)"\n` +
-      `ROOT=${shellQuote(appRoot)}\nZIP=${shellQuote(this.downloadPath)}\nEXPECTED=${shellQuote(version)}\nPID_TO_WAIT=${process.pid}\n` +
+      `ROOT=${shellQuote(appRoot)}\nZIP=${shellQuote(this.downloadPath)}\nEXPECTED=${shellQuote(version)}\nPID_TO_WAIT=${process.pid}\nAPP_DIR="$ROOT/app"\n` +
+      `OLD_DEP_SIG=""\nif [ -f "$APP_DIR/package.json" ]; then OLD_DEP_SIG="$(/usr/bin/env node -e 'const p=require(process.argv[1]);process.stdout.write(JSON.stringify({dependencies:p.dependencies||{},devDependencies:p.devDependencies||{}}));' "$APP_DIR/package.json" 2>/dev/null || true)"; fi\n` +
       `while kill -0 "$PID_TO_WAIT" >/dev/null 2>&1; do sleep 0.25; done\nTMP_DIR="$(mktemp -d "\${TMPDIR:-/tmp}/pulsestudio-update.XXXXXX")"\n` +
       `/usr/bin/unzip -q "$ZIP" -d "$TMP_DIR"\nSRC="$TMP_DIR/PulseStudio"\n` +
       `[ -f "$SRC/app/package.json" ] || { echo "Invalid update package"; exit 1; }\n` +
       `ACTUAL="$(/usr/bin/env node -p "require('$SRC/app/package.json').version")"\n[ "$ACTUAL" = "$EXPECTED" ] || { echo "Version mismatch: $ACTUAL"; exit 1; }\n` +
       `/usr/bin/rsync -a --checksum --delete --exclude '.git/' --exclude 'app/node_modules/' --exclude 'app/logs/' --exclude 'app/.pulsestudio-runtime-windows/' "$SRC/" "$ROOT/"\n` +
+      `NEW_DEP_SIG="$(/usr/bin/env node -e 'const p=require(process.argv[1]);process.stdout.write(JSON.stringify({dependencies:p.dependencies||{},devDependencies:p.devDependencies||{}}));' "$APP_DIR/package.json" 2>/dev/null || true)"\n` +
+      `if [ "$OLD_DEP_SIG" != "$NEW_DEP_SIG" ]; then echo "Dependency manifest changed; refreshing local dependencies."; (cd "$APP_DIR" && /usr/bin/env npm install --include=dev); fi\n` +
+      `PACKAGE_HASH="$(/usr/bin/env node -e 'const fs=require("fs"),c=require("crypto");process.stdout.write(c.createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex"));' "$APP_DIR/package.json" 2>/dev/null || true)"\nif [ -n "$PACKAGE_HASH" ] && [ -d "$APP_DIR/node_modules" ]; then printf '%s' "$PACKAGE_HASH" > "$APP_DIR/node_modules/.pulsestudio-package-hash"; fi\n` +
       `/bin/chmod +x "$ROOT/Start PulseStudio - macOS.command" "$ROOT/Start PulseStudio - Linux.sh" 2>/dev/null || true\n/bin/rm -rf "$TMP_DIR"\necho "PulseStudio v$EXPECTED installed: $(date)"\n` +
-      (process.platform === 'darwin' ? `/usr/bin/open "$ROOT/Start PulseStudio - macOS.command"\n` : `"$ROOT/Start PulseStudio - Linux.sh" >/dev/null 2>&1 &\n`);
+      (process.platform === 'darwin'
+        ? `ELECTRON_APP="$APP_DIR/node_modules/electron/dist/Electron.app"\nELECTRON_BIN="$ELECTRON_APP/Contents/MacOS/Electron"\n[ -x "$ELECTRON_BIN" ] || { echo "Signed Electron runtime is missing; update installed but automatic reopen is unavailable."; exit 1; }\necho "Reopening through existing signed Electron runtime: $ELECTRON_APP"\n/usr/bin/open -n "$ELECTRON_APP" --args "$APP_DIR"\n`
+        : `"$ROOT/Start PulseStudio - Linux.sh" >/dev/null 2>&1 &\n`);
     fs.writeFileSync(helper, script, { encoding: 'utf8', mode: 0o755 });
     try { fs.chmodSync(helper, 0o755); } catch {}
     return { command: shell, args: [helper], helper };
@@ -371,7 +376,7 @@ class RecoveryAwareUpdateManager {
     if (this.state.state !== 'ready' || !this.downloadPath) return { ok: false, reason: 'No downloaded update is ready.' };
     const safe = this.isSafe();
     if (!safe.safe) {
-      this.emit({ state: 'ready', blocker: String(safe.blocker || ''), message: safe.message ? `The update is ready. ${safe.message}` : `The update is ready. Finish ${safe.reason}, then choose Restart & Install.` });
+      this.emit({ state: 'ready', blocker: String(safe.blocker || ''), message: safe.message ? `The update is ready. ${safe.message}` : `The update is ready. Finish ${safe.reason}, then choose Install & Reopen.` });
       return { ok: false, reason: safe.message || safe.reason };
     }
     try {

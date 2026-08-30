@@ -1,6 +1,6 @@
 {
   "name": "pulsestudio",
-  "version": "0.2.126",
+  "version": "0.2.127",
   "description": "PulseStudio - your intelligent workspace for screen, voice, and playback.",
   "main": "main.js",
   "author": "Girish Gupta <girish.gupta@gmail.com>",

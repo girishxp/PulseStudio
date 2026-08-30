@@ -7088,7 +7088,7 @@ function renderUpdateDialog(value = {}) {
     primary.textContent = value.state === 'downloading'
       ? 'Downloading…'
       : value.state === 'ready'
-        ? 'Restart & Install'
+        ? 'Install & Reopen'
         : value.state === 'installing'
           ? 'Installing…'
           : value.state === 'error'
@@ -7113,7 +7113,7 @@ function updateUpdateUi(status) {
     checking: 'Checking…', current: 'Up to date', available: `Update available${value.availableVersion ? ` · v${value.availableVersion}` : ''}`,
     downloading: value.progress != null ? `Downloading · ${Math.round(value.progress * 100)}%` : 'Downloading…',
     deferred: deferredLabel, reminded: 'Reminder postponed', skipped: `Skipped${value.availableVersion ? ` · v${value.availableVersion}` : ''}`,
-    ready: `Update ready${value.availableVersion ? ` · v${value.availableVersion}` : ''}`, installing: 'Installing and restarting…', error: 'Update issue'
+    ready: `Update ready${value.availableVersion ? ` · v${value.availableVersion}` : ''}`, installing: 'Installing and reopening…', error: 'Update issue'
   };
   if ($('diagnosticUpdate')) { $('diagnosticUpdate').textContent = labels[value.state] || value.message || 'Unknown'; $('diagnosticUpdate').title = value.message || ''; }
   const updateDetail = $('diagnosticUpdateDetail');
@@ -7252,7 +7252,7 @@ async function refreshDiagnostics() {
   try {
     const d = await window.recorderAPI.getDiagnostics();
     state.lastDiagnostics = d;
-    $('aboutVersion').textContent = d.version || state.platformInfo?.version || '0.2.126';
+    $('aboutVersion').textContent = d.version || state.platformInfo?.version || '0.2.127';
     $('diagnosticBuild').textContent = d.packaged ? 'Installed / packaged' : 'Development build';
     $('diagnosticPlatform').textContent = `${d.platform} · ${d.arch} · ${d.release}`;
     const encoding = d.videoEncoding || {};
@@ -7516,7 +7516,7 @@ async function init() {
   state.platformInfo = info;
   applyStartupRecoveryState({ inProgress: Boolean(info.startupRecoveryInProgress) });
   document.documentElement.dataset.platform = info.platform;
-  $('aboutVersion').textContent = info.version || '0.2.126';
+  $('aboutVersion').textContent = info.version || '0.2.127';
   renderWindowCapturePrivacy(await window.recorderAPI.getWindowCapturePrivacy?.().catch(() => ({ enabled: true, supported: info.platform === 'darwin' || info.platform === 'win32' })) || { enabled: true, supported: true });
   const applicationAudioOption = $('computerAudioMode')?.querySelector('option[value="application"]');
   if (applicationAudioOption && !info.applicationAudioSupported) applicationAudioOption.disabled = true;

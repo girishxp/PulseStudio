@@ -948,7 +948,7 @@
         <button class="button primary" id="exportDiagnostics" type="button">Export Diagnostics ZIP</button>
       </section>
       <div class="diagnostics-checklist" aria-label="App health checks">
-        <div><span>App version</span><strong id="aboutVersion">0.2.126</strong></div>
+        <div><span>App version</span><strong id="aboutVersion">0.2.127</strong></div>
         <div><span>Screen access</span><strong id="diagnosticScreenPermission">Checking…</strong></div>
         <div><span>Microphone</span><strong id="diagnosticMicPermission">Checking…</strong></div>
         <div><span>Camera</span><strong id="diagnosticCameraPermission">Checking…</strong></div>
@@ -977,7 +977,7 @@
         <button class="button danger small hidden" id="discardRecoveryDiagnostics" type="button">Discard recovery</button>
         <button class="button secondary small hidden" id="stopBackgroundWork" type="button">Stop background work</button>
         <button class="button secondary small" id="checkUpdates" type="button">Check for updates</button>
-        <button class="button primary small hidden" id="installUpdate" type="button">Restart and update</button>
+        <button class="button primary small hidden" id="installUpdate" type="button">Install and reopen</button>
       </div>
       <p class="helper" id="diagnosticUpdateDetail">PulseStudio checks GitHub Releases automatically. Active recording/save, recovery, or local AI work can briefly pause an update; a protected recovery item that is not running never blocks updates.</p>
     </div>
@@ -999,7 +999,7 @@
         <progress id="updateProgressBar" max="100" value="0"></progress>
         <span id="updateProgressText">Downloading · 0%</span>
       </div>
-      <p class="update-portable-note">PulseStudio updates this portable installation directly from the official GitHub Release ZIP. Your recordings, settings, local AI models, and diagnostic logs stay in place.</p>
+      <p class="update-portable-note">PulseStudio updates this portable installation directly from the official GitHub Release ZIP. On macOS, the app briefly closes and reopens through the existing signed Electron runtime, so the downloaded .command launcher is not opened. Your recordings, settings, local AI models, and diagnostic logs stay in place.</p>
     </div>
     <div class="modal-footer update-available-actions">
       <button class="button secondary" id="updateSkipVersion" type="button">Skip This Version</button>
