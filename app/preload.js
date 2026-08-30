@@ -51,6 +51,8 @@ contextBridge.exposeInMainWorld('recorderAPI', {
   onRecoveryStatusChanged: (callback) => { const listener = () => callback(); ipcRenderer.on('recording:recovery-status-changed', listener); return () => ipcRenderer.removeListener('recording:recovery-status-changed', listener); },
   retryRecovery: () => ipcRenderer.invoke('recording:retry-recovery'),
   cancelRecovery: () => ipcRenderer.invoke('recording:cancel-recovery'),
+  discardRecovery: () => ipcRenderer.invoke('recording:discard-recovery'),
+  stopBackgroundWork: () => ipcRenderer.invoke('app:stop-background-work'),
   openRecoveryFolder: () => ipcRenderer.invoke('recording:open-recovery-folder'),
   getApplicationAudioCapability: () => ipcRenderer.invoke('audio:application-capability'),
   startApplicationAudioCapture: (payload) => ipcRenderer.invoke('audio:application-start', typeof payload === 'string' ? { windowTitle: payload } : (payload || {})),

@@ -520,6 +520,8 @@ function showRecoveryNotice(data = {}) {
   const hideActions = recovered || Boolean(data.none) || Boolean(data.informational);
   $('retryRecovery').classList.toggle('hidden', hideActions);
   $('showRecoveryFiles').classList.toggle('hidden', hideActions);
+  $('discardRecovery')?.classList.toggle('hidden', hideActions);
+  if ($('discardRecovery')) $('discardRecovery').disabled = Boolean(state.startupRecoveryBusy);
   panel.classList.toggle('recovered', recovered);
   panel.classList.toggle('informational', Boolean(data.informational));
   panel.classList.remove('hidden');
@@ -1491,6 +1493,11 @@ async function applyViewMode(mode, resizeWindow = true) {
   }
   const recordingActive = Boolean(state.mediaRecorder && state.mediaRecorder.state !== 'inactive');
   try { await window.recorderAPI.setRecordingPerformanceMode?.(recordingActive && !compact); } catch {}
+  // v0.2.126: transparency is a Mini View preference only. Apply it after any
+  // recording-performance transition so that switching Full -> Mini during an
+  // active recording cannot accidentally leave Mini opaque, while Full is still
+  // forced to 100% opacity by the main process.
+  await applyTransparency(state.transparencyPercent, false);
   try { await window.recorderAPI.setAlwaysOnTop(compact && state.alwaysOnTop); } catch {}
   renderCompactAiStatus();
   if (compact) { installCompactFitObserver(); scheduleCompactWindowFit(); }
@@ -1628,11 +1635,14 @@ async function applyTransparency(percent, persist = true) {
   try { await window.recorderAPI.setWindowTransparency(value); } catch {}
   if ($('transparencyButton')) {
     const valueLabel = $('transparencyValue');
-    if (valueLabel) valueLabel.textContent = `${value}%`;
-    const transparencyHelp = `Window transparency: ${value}%`;
+    if (valueLabel) valueLabel.textContent = state.viewMode === 'compact' ? `${value}%` : `Mini ${value}%`;
+    const transparencyHelp = state.viewMode === 'compact'
+      ? `Mini View transparency: ${value}%`
+      : `Mini View transparency: ${value}% — Full View stays opaque; switch to Mini View to see this setting.`;
     $('transparencyButton').removeAttribute('title');
     $('transparencyButton').dataset.fastTooltipTitle = transparencyHelp;
     $('transparencyButton').setAttribute('aria-label', transparencyHelp);
+    $('transparencyButton').classList.toggle('mini-only-setting-pending', state.viewMode !== 'compact' && value > 0);
     if (fastTooltipState.target === $('transparencyButton')) {
       fastTooltipState.text = transparencyHelp;
       if (fastTooltipState.tooltip) fastTooltipState.tooltip.textContent = transparencyHelp;
@@ -7091,14 +7101,28 @@ function renderUpdateDialog(value = {}) {
 function updateUpdateUi(status) {
   state.latestUpdateStatus = status || state.latestUpdateStatus || {};
   const value = state.latestUpdateStatus;
+  const deferredLabel = ({
+    recording: 'Paused · recording in progress',
+    saving: 'Paused · saving recording',
+    recovery: 'Paused · recovery running',
+    ai: 'Paused · local AI running',
+    background: 'Paused · background work running'
+  })[String(value.blocker || '')] || 'Paused · background work running';
   const labels = {
     development: 'Installed app only', unconfigured: 'Not configured', unavailable: 'Unavailable', idle: 'Automatic checks enabled',
     checking: 'Checking…', current: 'Up to date', available: `Update available${value.availableVersion ? ` · v${value.availableVersion}` : ''}`,
     downloading: value.progress != null ? `Downloading · ${Math.round(value.progress * 100)}%` : 'Downloading…',
-    deferred: 'Waiting until the app is idle', reminded: 'Reminder postponed', skipped: `Skipped${value.availableVersion ? ` · v${value.availableVersion}` : ''}`,
+    deferred: deferredLabel, reminded: 'Reminder postponed', skipped: `Skipped${value.availableVersion ? ` · v${value.availableVersion}` : ''}`,
     ready: `Update ready${value.availableVersion ? ` · v${value.availableVersion}` : ''}`, installing: 'Installing and restarting…', error: 'Update issue'
   };
   if ($('diagnosticUpdate')) { $('diagnosticUpdate').textContent = labels[value.state] || value.message || 'Unknown'; $('diagnosticUpdate').title = value.message || ''; }
+  const updateDetail = $('diagnosticUpdateDetail');
+  if (updateDetail) {
+    updateDetail.textContent = value.state === 'deferred' && value.message
+      ? value.message
+      : 'PulseStudio checks GitHub Releases automatically. Active recording/save, recovery, or local AI work can briefly pause an update; a protected recovery item that is not running never blocks updates.';
+    updateDetail.classList.toggle('warning-text', value.state === 'deferred');
+  }
   $('installUpdate')?.classList.toggle('hidden', value.state !== 'ready');
   renderUpdateDialog(value);
 }
@@ -7155,7 +7179,7 @@ const anonymousUsageGroups = Object.freeze({
   moreShowTranscriptFiles: 'transcription', showTranscriptFiles: 'transcription', transcriptViewRaw: 'transcription', transcriptViewSpeakers: 'transcription', transcriptViewTimecoded: 'transcription', toggleTranscript: 'transcription', copyTranscript: 'transcription', exportTxt: 'export', exportSrt: 'export', clearTranscriptSearch: 'transcription', transcriptSearchPrev: 'transcription', transcriptSearchNext: 'transcription',
   copyAllInsights: 'insights', regenerateInsights: 'insights', insightsPanelToggle: 'insights', chaptersToggle: 'insights', meetingSummaryToggle: 'insights', copySummary: 'insights', actionItemsToggle: 'insights', copyActionItems: 'insights',
   trimStartHandle: 'editing', trimEndHandle: 'editing', setTrimStart: 'editing', setTrimEnd: 'editing', saveTrimmedCopy: 'editing', addCutSegment: 'editing', clearCutSegments: 'editing', saveMultiCutCopy: 'editing',
-  cancelRecoveryButton: 'recovery', recordingKindVideoButton: 'recording', recordingKindAudioButton: 'recording', webcamQuickToggle: 'webcam', preflightMicMuteButton: 'microphone', recordDestinationChange: 'recording', startButton: 'recording', cancelAiJob: 'ai', recordingMicToggle: 'microphone', pausePrimaryButton: 'recording', bookmarkPrimaryButton: 'bookmarks', retryRecovery: 'recovery', showRecoveryFiles: 'recovery', dismissRecoveryNotice: 'recovery',
+  cancelRecoveryButton: 'recovery', recordingKindVideoButton: 'recording', recordingKindAudioButton: 'recording', webcamQuickToggle: 'webcam', preflightMicMuteButton: 'microphone', recordDestinationChange: 'recording', startButton: 'recording', cancelAiJob: 'ai', recordingMicToggle: 'microphone', pausePrimaryButton: 'recording', bookmarkPrimaryButton: 'bookmarks', retryRecovery: 'recovery', showRecoveryFiles: 'recovery', discardRecovery: 'recovery', recoverDiagnostics: 'recovery', discardRecoveryDiagnostics: 'recovery', stopBackgroundWork: 'recovery', dismissRecoveryNotice: 'recovery',
   settingsCollapseButton: 'settings', recordAdvancedToggle: 'settings', changeRecordingFolder: 'settings', resetRecordingFolder: 'settings', appToolsToggle: 'settings', windowCapturePrivacyToggle: 'privacy', analyticsToggle: 'privacy', voiceEnrollButton: 'my_voice', voiceClearButton: 'my_voice', openModelManager: 'ai', openDiagnostics: 'diagnostics', sendFeedback: 'feedback', exportDiagnosticsQuick: 'diagnostics', snapshotRecording: 'snapshot', bookmarkRecording: 'bookmarks', pauseButton: 'recording', stopButton: 'recording', recordingBookmarkTextSave: 'bookmarks', clearRegion: 'capture', applyRegion: 'capture', createCategoryConfirm: 'library',
   exportDiagnostics: 'diagnostics', copyDiagnostics: 'diagnostics', openLogs: 'diagnostics', sendFeedbackDiagnostics: 'feedback', checkUpdates: 'updates', installUpdate: 'updates', openModelsFolder: 'ai', refreshModels: 'ai', themeClassicChoice: 'appearance', themeStudioChoice: 'appearance', themesAppearanceToggle: 'appearance', analyticsReminderContinue: 'privacy', analyticsReminderEnable: 'privacy', firstRunChooseFolder: 'onboarding', completeFirstRun: 'onboarding'
 });
@@ -7228,7 +7252,7 @@ async function refreshDiagnostics() {
   try {
     const d = await window.recorderAPI.getDiagnostics();
     state.lastDiagnostics = d;
-    $('aboutVersion').textContent = d.version || state.platformInfo?.version || '0.2.124';
+    $('aboutVersion').textContent = d.version || state.platformInfo?.version || '0.2.126';
     $('diagnosticBuild').textContent = d.packaged ? 'Installed / packaged' : 'Development build';
     $('diagnosticPlatform').textContent = `${d.platform} · ${d.arch} · ${d.release}`;
     const encoding = d.videoEncoding || {};
@@ -7239,11 +7263,22 @@ async function refreshDiagnostics() {
     $('diagnosticScreenPermission').textContent = permissionHealthLabel(d.permissions?.screen);
     $('diagnosticMicPermission').textContent = permissionHealthLabel(d.permissions?.microphone);
     $('diagnosticCameraPermission').textContent = permissionHealthLabel(d.permissions?.camera, true);
-    $('diagnosticAi').textContent = d.ai?.workerAlive ? `✓ Ready${d.ai.activeJobs ? ` · ${d.ai.activeJobs} active` : ''}` : (d.ai?.activeJobs ? 'Starting…' : 'Ready when needed');
+    $('diagnosticAi').textContent = d.ai?.activeJobs
+      ? `${d.ai.activeJobs} local AI task${d.ai.activeJobs === 1 ? '' : 's'} active`
+      : (d.ai?.workerAlive ? '✓ Ready' : 'Ready when needed');
     $('diagnosticModels').textContent = `${d.models?.installed || 0}/${d.models?.total || 0} installed · ${formatBytes(d.models?.bytes || 0)}`;
-    $('diagnosticRecovery').textContent = d.recovery?.active ? 'Recording in progress' : d.recovery?.pending ? `${d.recovery.pending} recording${d.recovery.pending === 1 ? '' : 's'} need recovery` : '✓ None pending';
+    if (d.recovery?.active) $('diagnosticRecovery').textContent = 'Recording in progress';
+    else if (d.recovery?.recovering) $('diagnosticRecovery').textContent = `Recovering${d.recovery.pending ? ` · ${d.recovery.pending} protected` : ''}`;
+    else if (Number(d.recovery?.finalizing || 0) > 0) $('diagnosticRecovery').textContent = `Saving ${d.recovery.finalizing} recording${d.recovery.finalizing === 1 ? '' : 's'}`;
+    else if (d.recovery?.pending) $('diagnosticRecovery').textContent = `${d.recovery.pending} protected · ${Number(d.recovery.paused || 0) ? 'recovery paused' : 'recovery idle'}`;
+    else $('diagnosticRecovery').textContent = '✓ None pending';
     updateAnalyticsUi(d.analytics);
     updateUpdateUi(d.update);
+
+    const canActOnPendingRecovery = Number(d.recovery?.pending || 0) > 0 && !d.recovery?.active && !d.recovery?.recovering && Number(d.recovery?.finalizing || 0) === 0;
+    $('recoverDiagnostics')?.classList.toggle('hidden', !canActOnPendingRecovery);
+    $('discardRecoveryDiagnostics')?.classList.toggle('hidden', !canActOnPendingRecovery);
+    $('stopBackgroundWork')?.classList.toggle('hidden', !d.background?.cancellable);
 
     const permissionProblem = ['screen', 'microphone'].some((key) => ['denied', 'restricted'].includes(String(d.permissions?.[key] || '').toLowerCase()));
     const storageProblem = Number.isFinite(Number(d.freeBytes)) && Number(d.freeBytes) < 10 * 1024 ** 3;
@@ -7253,9 +7288,18 @@ async function refreshDiagnostics() {
     const overallIcon = $('diagnosticOverallIcon');
     const card = $('diagnosticsHealthCard');
     card?.classList.remove('good', 'warn');
-    if (permissionProblem || recoveryProblem) {
+    if (permissionProblem) {
       if (overall) overall.textContent = 'A few items need attention';
-      if (overallDetail) overallDetail.textContent = recoveryProblem ? 'An unfinished recording is protected and can be recovered.' : 'A required permission is currently blocked.';
+      if (overallDetail) overallDetail.textContent = 'A required permission is currently blocked.';
+      if (overallIcon) overallIcon.textContent = '!';
+      card?.classList.add('warn');
+    } else if (recoveryProblem) {
+      if (overall) overall.textContent = d.recovery?.recovering ? 'Recovering an unfinished recording' : 'A protected recording needs attention';
+      if (overallDetail) {
+        overallDetail.textContent = d.recovery?.recovering
+          ? 'Recovery is running now. You can let it finish or use Stop background work; a stalled automatic recovery is paused automatically.'
+          : 'The unfinished recording is protected, but recovery is not running and updates are not blocked. Recover it now or discard it if you no longer need it.';
+      }
       if (overallIcon) overallIcon.textContent = '!';
       card?.classList.add('warn');
     } else if (storageProblem) {
@@ -7280,6 +7324,49 @@ async function refreshDiagnostics() {
 
 async function openAboutDiagnostics() { $('aboutDialog').showModal(); await refreshDiagnostics(); }
 
+async function discardRecoveryFromUi() {
+  const pending = Number(state.lastDiagnostics?.recovery?.pending || 0);
+  const label = pending > 1 ? `${pending} protected recordings` : 'the protected unfinished recording';
+  const confirmed = window.confirm(`Discard ${label}?\n\nThis permanently removes the protected recovery source. This cannot be undone.`);
+  if (!confirmed) return false;
+  const result = await window.recorderAPI.discardRecovery?.().catch((error) => ({ ok: false, reason: friendlyErrorText(error) }));
+  if (!result?.ok) {
+    showToast(result?.reason || 'Could not discard the protected recovery.', 'warning', 4800);
+    return false;
+  }
+  hideRecoveryNotice();
+  showToast(result.message || 'Protected recovery discarded');
+  await updateReadiness().catch(() => {});
+  if ($('aboutDialog')?.open) await refreshDiagnostics();
+  if (state.latestUpdateStatus?.state === 'deferred') {
+    const status = await window.recorderAPI.checkForUpdates().catch(() => null);
+    if (status) updateUpdateUi(status);
+  }
+  return true;
+}
+
+async function stopBackgroundWorkFromUi() {
+  const button = $('stopBackgroundWork');
+  if (button) { button.disabled = true; button.textContent = 'Stopping…'; }
+  try {
+    const result = await window.recorderAPI.stopBackgroundWork?.().catch((error) => ({ ok: false, reason: friendlyErrorText(error) }));
+    if (!result?.ok) {
+      showToast(result?.reason || 'Background work could not be stopped.', 'warning', 4800);
+      return false;
+    }
+    showToast(result.idle ? 'Background work stopped. PulseStudio is idle.' : (result.remainingBlocker || 'Background work is still stopping.'), result.idle ? 'success' : 'warning', 4800);
+    await updateReadiness().catch(() => {});
+    if ($('aboutDialog')?.open) await refreshDiagnostics();
+    if (result.idle && state.latestUpdateStatus?.state === 'deferred') {
+      const status = await window.recorderAPI.checkForUpdates().catch(() => null);
+      if (status) updateUpdateUi(status);
+    }
+    return Boolean(result.idle);
+  } finally {
+    if (button) { button.disabled = false; button.textContent = 'Stop background work'; }
+  }
+}
+
 function applyStartupRecoveryState(payload = {}) {
   const busy = Boolean(payload?.inProgress);
   state.startupRecoveryBusy = busy;
@@ -7290,13 +7377,15 @@ function applyStartupRecoveryState(payload = {}) {
     cancelButton.disabled = stopping;
     cancelButton.textContent = stopping ? 'Stopping…' : 'Stop recovery';
   }
+  if ($('discardRecovery')) $('discardRecovery').disabled = busy;
   const recordingActive = Boolean(state.mediaRecorder && state.mediaRecorder.state !== 'inactive');
   syncRecordStartAvailability();
   if (!recordingActive && !state.isStarting && !state.isStopping && busy) {
     setStatus(stopping
       ? 'Stopping previous-recording recovery… Your protected source remains available.'
-      : 'Recovering a previous recording in the background. You can start a new recording now.');
+      : 'Recovering a previous recording automatically in the background. You can stop it or start a new recording at any time.');
   }
+  if ($('aboutDialog')?.open) void refreshDiagnostics();
 }
 
 async function consumeStartupRecoveryNotice() {
@@ -7304,7 +7393,7 @@ async function consumeStartupRecoveryNotice() {
   if (!recovery?.message) return null;
   if (recovery.cancelled || recovery.paused) {
     setStatus('Previous-recording recovery is paused. The protected source can be recovered later.');
-    if ((recovery.title || '').toLowerCase().includes('for recording') || /new recording started/i.test(recovery.message || '')) {
+    if ((recovery.title || '').toLowerCase().includes('for recording') || /yielded to recording/i.test(recovery.title || '') || /new recording started/i.test(recovery.message || '')) {
       // Recording has priority. Do not cover the capture controls with a recovery card
       // merely because background salvage politely yielded to the new recording.
       showToast('Previous recovery paused while recording', 'warning', 3200);
@@ -7316,12 +7405,17 @@ async function consumeStartupRecoveryNotice() {
     state.recordingStartHardBlockReason = '';
     syncRecordStartAvailability();
     setStatus('An unfinished recording was recovered successfully.');
+    showRecoveryNotice({ recovered: true, detail: recovery.message || 'Your recording was recovered successfully and is available in Playback.' });
     showToast('Recovered unfinished recording');
     if (recovery.path) { await refreshRecordings(); runAutomaticTranscription(recovery.path, false); }
   } else {
-    setStatus('We found an unfinished recording. Your recording data is safe and can be recovered.', false);
-    showRecoveryNotice({ title: 'Unfinished recording found', detail: 'Your recording data is safe. Recover will retry the save without deleting the protected source.' });
+    setStatus('An unfinished recording is protected. Recovery is idle and does not block updates.', false);
+    showRecoveryNotice({
+      title: recovery.title || 'Unfinished recording found',
+      detail: recovery.message || 'Your recording data is safe. PulseStudio can recover it while idle, or you can discard the protected copy if you no longer need it.'
+    });
   }
+  if ($('aboutDialog')?.open) await refreshDiagnostics();
   return recovery;
 }
 
@@ -7344,6 +7438,12 @@ async function init() {
   applyUiTheme(localStorage.getItem('uiTheme') || 'classic');
   initFastTooltips();
   applyThumbnailSize(localStorage.getItem('thumbnailSize') || 250);
+  // Load the saved Mini transparency before the hidden native window is revealed,
+  // so a restored Mini View starts directly at the user's chosen opacity.
+  {
+    const savedTransparency = Number(localStorage.getItem('transparencyPercent') || 0);
+    state.transparencyPercent = [0, 10, 20, 30, 50].includes(savedTransparency) ? savedTransparency : 0;
+  }
   // v0.2.82: restore the last Full/Mini state before the hidden BrowserWindow is
   // revealed. Prefer the main-process state once it exists; fall back to the
   // existing localStorage value to migrate users from v0.2.81 without a flash.
@@ -7416,7 +7516,7 @@ async function init() {
   state.platformInfo = info;
   applyStartupRecoveryState({ inProgress: Boolean(info.startupRecoveryInProgress) });
   document.documentElement.dataset.platform = info.platform;
-  $('aboutVersion').textContent = info.version || '0.2.124';
+  $('aboutVersion').textContent = info.version || '0.2.126';
   renderWindowCapturePrivacy(await window.recorderAPI.getWindowCapturePrivacy?.().catch(() => ({ enabled: true, supported: info.platform === 'darwin' || info.platform === 'win32' })) || { enabled: true, supported: true });
   const applicationAudioOption = $('computerAudioMode')?.querySelector('option[value="application"]');
   if (applicationAudioOption && !info.applicationAudioSupported) applicationAudioOption.disabled = true;
@@ -7567,7 +7667,17 @@ async function init() {
   $('transparencyButton').addEventListener('click', async () => {
     const levels = [0, 10, 20, 30, 50];
     const currentIndex = Math.max(0, levels.indexOf(state.transparencyPercent));
-    await applyTransparency(levels[(currentIndex + 1) % levels.length]);
+    const nextValue = levels[(currentIndex + 1) % levels.length];
+    await applyTransparency(nextValue);
+    if (state.viewMode !== 'compact') {
+      showToast(
+        nextValue > 0
+          ? `Mini View transparency set to ${nextValue}%. Full View stays opaque; switch to Mini View to see it.`
+          : 'Mini View transparency set to 0%. Full View always stays opaque.',
+        'success',
+        3600
+      );
+    }
   });
   $('alwaysOnTopButton').addEventListener('click', () => applyAlwaysOnTop(!state.alwaysOnTop));
   $('compactCaptureSettingsToggle').addEventListener('click', () => applyCompactCaptureCollapsed(!state.compactCaptureCollapsed));
@@ -7681,6 +7791,7 @@ async function init() {
       }
       showRecoveryNotice({ title: result?.paused ? 'Recovery paused' : 'Recovery stopping', detail: result?.message || 'Stopping recovery. The unfinished recording remains protected.' });
       await updateReadiness();
+      if ($('aboutDialog')?.open) await refreshDiagnostics();
     } catch (error) {
       button.disabled = false;
       button.textContent = 'Stop recovery';
@@ -7707,8 +7818,16 @@ async function init() {
         $('recoveryNoticeDetail').textContent = result?.message || 'Recovery needs another attempt. Your source files remain protected.';
       }
     } catch (error) { $('recoveryNoticeDetail').textContent = friendlyErrorText(error); }
-    finally { $('retryRecovery').disabled = false; $('retryRecovery').textContent = 'Recover'; }
+    finally {
+      $('retryRecovery').disabled = false;
+      $('retryRecovery').textContent = 'Recover';
+      if ($('aboutDialog')?.open) await refreshDiagnostics();
+    }
   });
+  $('recoverDiagnostics')?.addEventListener('click', () => $('retryRecovery')?.click());
+  $('discardRecovery')?.addEventListener('click', discardRecoveryFromUi);
+  $('discardRecoveryDiagnostics')?.addEventListener('click', discardRecoveryFromUi);
+  $('stopBackgroundWork')?.addEventListener('click', stopBackgroundWorkFromUi);
   $('showRecoveryFiles')?.addEventListener('click', () => window.recorderAPI.openRecoveryFolder());
   $('dismissRecoveryNotice')?.addEventListener('click', hideRecoveryNotice);
   const firstRunShown = await showFirstRunSetupIfNeeded();

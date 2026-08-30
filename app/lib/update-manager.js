@@ -160,7 +160,8 @@ class RecoveryAwareUpdateManager {
       releaseNotes: String(release?.body || '').trim().slice(0, 6000),
       releasePublishedAt: String(release?.published_at || ''),
       releaseUrl: String(release?.html_url || ''),
-      progress: null
+      progress: null,
+      blocker: ''
     };
   }
   init() {
@@ -189,8 +190,8 @@ class RecoveryAwareUpdateManager {
     if (!this.state.configured) return this.snapshot();
     this.lastAutoCheck = Date.now();
     const safe = this.isSafe();
-    if (!safe.safe) return this.emit({ state: 'deferred', configured: true, canDownload: false, message: `Update check will wait until ${safe.reason}.` });
-    this.emit({ state: 'checking', configured: true, message: 'Checking GitHub for updates…', progress: null, canDownload: false });
+    if (!safe.safe) return this.emit({ state: 'deferred', configured: true, canDownload: false, blocker: String(safe.blocker || ''), message: safe.message || `Update check will wait until ${safe.reason}.` });
+    this.emit({ state: 'checking', configured: true, blocker: '', message: 'Checking GitHub for updates…', progress: null, canDownload: false });
     this.event('update_check_started', { manual: Boolean(manual) });
     try {
       const apiBase = String(this.config.apiBaseUrl || 'https://api.github.com').replace(/\/$/, '');
@@ -261,7 +262,7 @@ class RecoveryAwareUpdateManager {
     const safe = this.isSafe();
     if (!safe.safe) {
       const version = this.pendingRelease?.version || this.state.availableVersion || '';
-      return this.emit({ state: 'available', configured: true, availableVersion: version, canDownload: true, message: `PulseStudio v${version} is available. Finish ${safe.reason}, then choose Update Now.` });
+      return this.emit({ state: 'available', configured: true, availableVersion: version, canDownload: true, blocker: String(safe.blocker || ''), message: safe.message ? `${safe.message} PulseStudio v${version} is available and can be downloaded once the blocker stops.` : `PulseStudio v${version} is available. Finish ${safe.reason}, then choose Update Now.` });
     }
     const { version, release } = this.pendingRelease;
     this.clearSuppressionForVersion(version);
@@ -370,8 +371,8 @@ class RecoveryAwareUpdateManager {
     if (this.state.state !== 'ready' || !this.downloadPath) return { ok: false, reason: 'No downloaded update is ready.' };
     const safe = this.isSafe();
     if (!safe.safe) {
-      this.emit({ state: 'ready', message: `The update is ready. Finish ${safe.reason}, then choose Restart & Install.` });
-      return { ok: false, reason: safe.reason };
+      this.emit({ state: 'ready', blocker: String(safe.blocker || ''), message: safe.message ? `The update is ready. ${safe.message}` : `The update is ready. Finish ${safe.reason}, then choose Restart & Install.` });
+      return { ok: false, reason: safe.message || safe.reason };
     }
     try {
       const helper = this.createInstallHelper();

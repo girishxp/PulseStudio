@@ -1,5 +1,27 @@
-# PulseStudio v0.2.124
+# PulseStudio v0.2.126
 
+
+
+## v0.2.126 Mini View-only transparency
+
+- Window transparency now applies **only to Mini View**. Full View is always forced to 100% opacity, including after switching back from a transparent Mini View and after Full View recording performance mode ends.
+- The saved transparency preference remains selectable from Full View, but selecting it there does not visually fade the Full window. PulseStudio explicitly tells the user that the chosen level will appear only after switching to Mini View.
+- Transparency tooltips/accessible labels now say **Mini View transparency** and explain that Full View stays opaque.
+- The Help text now documents the Mini-only behavior.
+- No recording, microphone, audio cleanup, speaker identification, transcription, recovery, update, or playback processing was changed in this build.
+
+
+## v0.2.125 self-healing recovery and actionable update blockers
+
+- Unpaused interrupted recordings now start **automatic recovery while PulseStudio is idle** instead of remaining protected indefinitely with no recovery attempt.
+- Automatic recovery is bounded by a watchdog: if it reports no progress for **5 minutes**, or reaches a **1-hour maximum runtime**, PulseStudio stops that attempt, keeps the source protected, pauses recovery, and returns the app to idle.
+- A protected recovery item that is merely waiting on disk **no longer blocks update checks, downloads, or installation**. Only real active work can defer an update: live recording, stopped-recording finalization, active recovery, local AI work, or active media processing.
+- About & Diagnostics now shows the exact update blocker, for example **“Update check paused — recovery is currently running”**, rather than an indefinite generic “Waiting until the app is idle” state.
+- About & Diagnostics adds **Recover recording** and **Discard recovery** actions whenever a protected recovery is idle. Discard requires confirmation and permanently removes only recovery-folder source data/manifests.
+- About & Diagnostics adds **Stop background work** whenever no live recording is active but recovery, stopped-recording finalization, local AI, or cancellable media processing is running. Stopping a recording finalization preserves its source as a paused recovery item rather than deleting it.
+- Starting a new recording still has priority over automatic recovery; recovery yields, keeps its protected source, and can resume later.
+- Recovery failures no longer leave PulseStudio permanently busy. Failed or stale automatic attempts are paused so the updater and the rest of the app can proceed while the protected source remains available for manual Recover or Discard.
+- No microphone capture, RNNoise, capture-time echo cancellation, microphone/system mixing, My Voice isolation behavior, speaker identification, transcription algorithms, or playback processing was changed in this build.
 
 ## v0.2.124 Automatic GitHub Release update popup for unsigned builds
 

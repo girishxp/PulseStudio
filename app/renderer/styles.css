@@ -8498,6 +8498,10 @@ body.player-fullscreen #videoPlayerShell.chapters-open .playback-chapter-sidebar
 .analytics-reminder-actions .button { width: 100%; min-height: 44px; height: 44px; margin: 0 !important; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; }
 @media (max-width: 560px) { .analytics-reminder-actions { grid-template-columns: 1fr; } }
 
+/* v0.2.125: actionable recovery/background-update safety messaging. */
+.diagnostics-content .helper.warning-text { color: var(--warning-color); font-weight: 650; }
+html[data-theme="light"] .diagnostics-content .helper.warning-text { color: #8a5a00; }
+
 /* v0.2.124: proactive unsigned/portable GitHub Release update prompt. */
 .update-available-modal { width: min(620px, calc(100vw - 36px)); }
 .update-available-header { gap: 18px; align-items: flex-start; }
@@ -8525,4 +8529,11 @@ html[data-theme="light"] .update-progress-wrap span { color: #2563eb; }
 @media (max-width: 620px) {
   .update-available-actions { justify-content: stretch; }
   .update-available-actions .button { flex: 1 1 100%; }
+}
+
+
+/* v0.2.126: transparency is a Mini View-only preference. In Full View the
+   control may save a Mini preference, but the Full native window stays opaque. */
+body:not(.compact-mode) .transparency-cycle-button.mini-only-setting-pending {
+  border-color: color-mix(in srgb, var(--accent, #0a84ff) 42%, transparent);
 }

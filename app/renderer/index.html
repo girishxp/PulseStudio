@@ -32,7 +32,7 @@
               <path class="compact-privacy-off-mark" d="M7.4 7.4 16.6 16.6"/>
             </svg>
           </span>
-          <button class="header-button transparency-cycle-button" id="transparencyButton" type="button" aria-label="Window transparency: 0%" data-fast-tooltip-title="Window transparency: 0%" data-tooltip-delay="1000" data-tooltip-hover-only="true" data-tooltip-custom-only="true"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5"/><path d="M12 4.5a7.5 7.5 0 0 1 0 15Z"/></svg><span id="transparencyValue">0%</span></button>
+          <button class="header-button transparency-cycle-button" id="transparencyButton" type="button" aria-label="Mini View transparency: 0% — Full View stays opaque" data-fast-tooltip-title="Mini View transparency: 0% — Full View stays opaque" data-tooltip-delay="1000" data-tooltip-hover-only="true" data-tooltip-custom-only="true"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5"/><path d="M12 4.5a7.5 7.5 0 0 1 0 15Z"/></svg><span id="transparencyValue">Mini 0%</span></button>
           <button class="icon-button" id="themeToggle" type="button" aria-label="Switch to light mode" title="Switch to light mode"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.5"/><path d="M12 2.8v2.1M12 19.1v2.1M2.8 12h2.1M19.1 12h2.1M5.5 5.5 7 7M17 17l1.5 1.5M18.5 5.5 17 7M7 17l-1.5 1.5"/></svg></button>
         </div>
         <button class="icon-button compact-only always-on-top-button" id="alwaysOnTopButton" type="button" aria-pressed="false" title="Keep Mini Controller above other windows" aria-label="Keep Mini Controller above other windows">
@@ -632,6 +632,7 @@
             <div class="recovery-notice-actions">
               <button class="button primary small" id="retryRecovery" type="button">Recover</button>
               <button class="button secondary small" id="showRecoveryFiles" type="button">Files</button>
+              <button class="button danger small" id="discardRecovery" type="button">Discard</button>
               <button class="icon-button recovery-dismiss" id="dismissRecoveryNotice" type="button" aria-label="Dismiss recovery message" title="Dismiss">×</button>
             </div>
           </div>
@@ -917,7 +918,7 @@
       <h3>Full View and Mini Controller</h3>
       <p>Use the <strong>Full / Mini</strong> switch in the title bar. Full View includes recording and Playback. Mini Controller is recording-only and keeps essential status and recording controls visible while staying out of the way. Recording setup, Recording options, and App & AI tools remain in Full View.</p>
       <h3>Window transparency</h3>
-      <p>Use the ◐ icon in the title bar to choose 0%, 10%, 20%, 30%, or 50% transparency. The setting is remembered.</p>
+      <p>Transparency applies only to <strong>Mini View</strong>. Full View always remains fully opaque. Use the ◐ icon to choose 0%, 10%, 20%, 30%, or 50% for Mini View; the setting is remembered. If you choose a level while in Full View, PulseStudio explicitly tells you that it will take effect only after you switch to Mini View.</p>
       <h3>macOS permissions</h3>
       <p>If recording or microphone capture is blocked, open System Settings → Privacy & Security and enable Screen & System Audio Recording and Microphone access for the app/Terminal, then restart PulseStudio.</p>
       <h3>Windows permissions</h3>
@@ -947,7 +948,7 @@
         <button class="button primary" id="exportDiagnostics" type="button">Export Diagnostics ZIP</button>
       </section>
       <div class="diagnostics-checklist" aria-label="App health checks">
-        <div><span>App version</span><strong id="aboutVersion">0.2.124</strong></div>
+        <div><span>App version</span><strong id="aboutVersion">0.2.126</strong></div>
         <div><span>Screen access</span><strong id="diagnosticScreenPermission">Checking…</strong></div>
         <div><span>Microphone</span><strong id="diagnosticMicPermission">Checking…</strong></div>
         <div><span>Camera</span><strong id="diagnosticCameraPermission">Checking…</strong></div>
@@ -972,10 +973,13 @@
         <button class="button secondary small" id="copyDiagnostics" type="button">Copy diagnostics</button>
         <button class="button secondary small" id="openLogs" type="button">Open logs</button>
         <button class="button secondary small" id="sendFeedbackDiagnostics" type="button">Send Feedback…</button>
+        <button class="button secondary small hidden" id="recoverDiagnostics" type="button">Recover recording</button>
+        <button class="button danger small hidden" id="discardRecoveryDiagnostics" type="button">Discard recovery</button>
+        <button class="button secondary small hidden" id="stopBackgroundWork" type="button">Stop background work</button>
         <button class="button secondary small" id="checkUpdates" type="button">Check for updates</button>
         <button class="button primary small hidden" id="installUpdate" type="button">Restart and update</button>
       </div>
-      <p class="helper">PulseStudio checks GitHub Releases automatically. Update prompts wait until recording, recovery, and local AI work are idle, and you can still check manually here.</p>
+      <p class="helper" id="diagnosticUpdateDetail">PulseStudio checks GitHub Releases automatically. Active recording/save, recovery, or local AI work can briefly pause an update; a protected recovery item that is not running never blocks updates.</p>
     </div>
     <div class="modal-footer"><button class="button secondary" data-close-dialog="aboutDialog" type="button">Close</button></div>
   </dialog>

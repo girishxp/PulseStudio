@@ -179,8 +179,18 @@ let startupRecoveryInProgress = false;
 let startupRecoveryStarted = false;
 let recoveryCancelRequested = false;
 let recoveryCancelReason = '';
+let recoveryRunSource = '';
+let recoveryStartedAt = 0;
+let recoveryLastActivityAt = 0;
+let recoveryWatchdogTimer = null;
+let automaticRecoveryTimer = null;
+const RECOVERY_STALE_ACTIVITY_MS = 5 * 60 * 1000;
+const RECOVERY_MAX_RUNTIME_MS = 60 * 60 * 1000;
 const activeRecoveryChildren = new Set();
 const recoveryProcessContext = new AsyncLocalStorage();
+const finalizationProcessContext = new AsyncLocalStorage();
+const activeFinalizationChildren = new Map();
+const cancelledFinalizationSessions = new Set();
 // Per-recording background processing context. It lets Trash cancel FFmpeg extraction,
 // transcription, speaker detection and optional AI work for exactly one clip without
 // disturbing processing for the next item in the queue.
@@ -631,16 +641,50 @@ function ensureMainWindowVisible({ focus = true } = {}) {
 }
 
 function startupRecoveryStateSnapshot() {
+  const pending = listPendingRecoveries(recoveryDirectory());
   return {
     inProgress: Boolean(startupRecoveryInProgress),
     stopping: Boolean(startupRecoveryInProgress && recoveryCancelRequested),
-    cancellable: Boolean(startupRecoveryInProgress && !recoveryCancelRequested)
+    cancellable: Boolean(startupRecoveryInProgress && !recoveryCancelRequested),
+    source: recoveryRunSource || '',
+    startedAt: recoveryStartedAt || 0,
+    lastActivityAt: recoveryLastActivityAt || 0,
+    pending: pending.length,
+    paused: pending.filter((item) => isRecoveryPausedManifest(item.manifest)).length
   };
 }
 
 function broadcastStartupRecoveryState() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   try { mainWindow.webContents.send('recording:startup-recovery-state', startupRecoveryStateSnapshot()); } catch {}
+}
+
+function touchRecoveryActivity() {
+  if (!startupRecoveryInProgress) return;
+  recoveryLastActivityAt = Date.now();
+}
+
+function clearRecoveryWatchdog() {
+  if (recoveryWatchdogTimer) clearInterval(recoveryWatchdogTimer);
+  recoveryWatchdogTimer = null;
+}
+
+function armRecoveryWatchdog() {
+  clearRecoveryWatchdog();
+  if (recoveryRunSource !== 'automatic') return;
+  recoveryWatchdogTimer = setInterval(() => {
+    if (!startupRecoveryInProgress || recoveryRunSource !== 'automatic') return clearRecoveryWatchdog();
+    const now = Date.now();
+    const quietFor = now - Number(recoveryLastActivityAt || recoveryStartedAt || now);
+    const totalFor = now - Number(recoveryStartedAt || now);
+    if (quietFor < RECOVERY_STALE_ACTIVITY_MS && totalFor < RECOVERY_MAX_RUNTIME_MS) return;
+    const staleReason = totalFor >= RECOVERY_MAX_RUNTIME_MS
+      ? 'Automatic recovery reached its one-hour safety limit. It was paused so PulseStudio can return to idle.'
+      : 'Automatic recovery stopped reporting progress for five minutes. It was paused so PulseStudio can return to idle.';
+    activityLog('warn', 'recovery.automatic-watchdog-stop', { quietForMs: quietFor, runtimeMs: totalFor, pending: listPendingRecoveries(recoveryDirectory()).length });
+    requestRecoveryCancellation(staleReason, { pauseMode: 'stale' });
+  }, 30000);
+  recoveryWatchdogTimer.unref?.();
 }
 
 function publishRecoveryNotice(notice) {
@@ -667,26 +711,37 @@ function stageInterruptedActiveJournalForRecovery() {
   return preserved;
 }
 
-function pendingRecoveriesForAutomaticRun() {
-  return listPendingRecoveries(recoveryDirectory()).filter((item) => item.manifest?.status !== 'paused_by_user');
+function isRecoveryPausedManifest(manifest = {}) {
+  return /^paused_/i.test(String(manifest?.status || ''));
 }
 
-function setUserPausedRecoveryState(paused) {
+function pendingRecoveriesForAutomaticRun() {
+  return listPendingRecoveries(recoveryDirectory()).filter((item) => !isRecoveryPausedManifest(item.manifest));
+}
+
+function setRecoveryPausedState(paused, mode = 'user') {
+  const pausedStatus = mode === 'stale' ? 'paused_stale' : mode === 'failure' ? 'paused_after_failure' : 'paused_by_user';
   for (const item of listPendingRecoveries(recoveryDirectory())) {
     const manifest = { ...(item.manifest || {}) };
     if (!manifest.tempPath) continue;
     if (paused) {
-      if (manifest.status === 'paused_by_user') continue;
-      manifest.statusBeforePause = manifest.status || 'finalization_failed';
-      manifest.status = 'paused_by_user';
+      if (!isRecoveryPausedManifest(manifest)) manifest.statusBeforePause = manifest.status || 'finalization_failed';
+      manifest.status = pausedStatus;
       manifest.pausedAt = Date.now();
-    } else if (manifest.status === 'paused_by_user') {
+      manifest.pauseMode = mode;
+    } else if (isRecoveryPausedManifest(manifest)) {
       manifest.status = manifest.statusBeforePause || 'finalization_failed';
       delete manifest.statusBeforePause;
       delete manifest.pausedAt;
+      delete manifest.pauseMode;
     } else continue;
     try { atomicWriteJson(item.manifestPath, manifest); } catch {}
   }
+  broadcastStartupRecoveryState();
+}
+
+function setUserPausedRecoveryState(paused) {
+  setRecoveryPausedState(paused, 'user');
 }
 
 function recoveryCancellationError(reason = recoveryCancelReason || 'Recovery was stopped.') {
@@ -705,8 +760,9 @@ function throwIfRecoveryCancelled() {
 
 function requestRecoveryCancellation(reason = 'Recovery was stopped. The unfinished recording remains protected.', options = {}) {
   if (!startupRecoveryInProgress) return { requested: false, message: 'No recovery is currently running.' };
-  activityLog('warn', 'recovery.cancel-requested', { reason: String(reason || ''), pauseForUser: Boolean(options.pauseForUser), activeProcesses: activeRecoveryChildren.size });
-  if (options.pauseForUser) setUserPausedRecoveryState(true);
+  const pauseMode = String(options.pauseMode || (options.pauseForUser ? 'user' : '')).trim();
+  activityLog('warn', 'recovery.cancel-requested', { reason: String(reason || ''), pauseMode, activeProcesses: activeRecoveryChildren.size });
+  if (pauseMode) setRecoveryPausedState(true, pauseMode);
   recoveryCancelRequested = true;
   recoveryCancelReason = String(reason || 'Recovery was stopped.');
   for (const child of [...activeRecoveryChildren]) {
@@ -719,9 +775,9 @@ function requestRecoveryCancellation(reason = 'Recovery was stopped. The unfinis
   broadcastStartupRecoveryState();
   return {
     requested: true,
-    paused: Boolean(options.pauseForUser),
-    message: options.pauseForUser
-      ? 'Stopping recovery. This unfinished recording is paused for later and will not auto-recover on the next launch.'
+    paused: Boolean(pauseMode),
+    message: pauseMode
+      ? 'Stopping recovery. The unfinished recording remains protected and is paused for later.'
       : 'Stopping recovery. The unfinished recording remains protected and can be recovered later.'
   };
 }
@@ -735,30 +791,141 @@ function hasPendingRecoveryWork() {
   }
 }
 
+function hasActiveCapture() {
+  return Boolean(activeTempPath || activeWriteStream || activeMicWriteStream || activeNeuralMicWriteStream);
+}
+
+function recoveryCanRunNow() {
+  if (hasActiveCapture() || sealedRecordingSessions.size) return false;
+  const ai = aiWorkerManager?.snapshot?.();
+  if (ai?.activeId || ai?.jobs?.length) return false;
+  const updateState = updateManager?.snapshot?.();
+  if (['downloading', 'ready', 'installing'].includes(String(updateState?.state || ''))) return false;
+  return true;
+}
+
+function scheduleAutomaticRecovery(delayMs = 1500) {
+  if (automaticRecoveryTimer) clearTimeout(automaticRecoveryTimer);
+  automaticRecoveryTimer = null;
+  if (!pendingRecoveriesForAutomaticRun().length || startupRecoveryInProgress) return;
+  automaticRecoveryTimer = setTimeout(() => {
+    automaticRecoveryTimer = null;
+    if (!pendingRecoveriesForAutomaticRun().length || startupRecoveryInProgress) return;
+    if (!recoveryCanRunNow()) return scheduleAutomaticRecovery(5000);
+    void runRecoveryAttempt({ source: 'automatic', includePaused: false }).then((result) => {
+      if (!result) return;
+      if (result.recovered) {
+        publishRecoveryNotice({
+          recovered: true,
+          path: result.path || null,
+          title: 'Recording recovered',
+          message: result.message || 'An unfinished recording was recovered automatically.'
+        });
+      } else if (result.cancelled) {
+        const willResumeAutomatically = pendingRecoveriesForAutomaticRun().length > 0;
+        publishRecoveryNotice({
+          recovered: false,
+          paused: !willResumeAutomatically,
+          available: true,
+          title: willResumeAutomatically ? 'Recovery yielded to recording' : 'Automatic recovery paused',
+          message: result.message || (willResumeAutomatically
+            ? 'Recovery yielded to higher-priority recording work and will resume automatically when PulseStudio is idle.'
+            : 'Automatic recovery was paused. The protected recording remains available, and PulseStudio is idle.')
+        });
+        if (willResumeAutomatically) scheduleAutomaticRecovery(5000);
+      } else if (Number(result.failedCount || 0) > 0 || result.technicalError) {
+        setRecoveryPausedState(true, 'failure');
+        publishRecoveryNotice({
+          recovered: false,
+          paused: true,
+          available: true,
+          title: 'Automatic recovery needs attention',
+          message: 'PulseStudio tried to recover the unfinished recording but could not finish. Automatic recovery is paused so the app stays idle; you can Recover again or Discard the protected copy.'
+        });
+      }
+    }).catch((error) => {
+      setRecoveryPausedState(true, 'failure');
+      activityLog('error', 'recovery.automatic-failed', { error });
+      publishRecoveryNotice({
+        recovered: false,
+        paused: true,
+        available: true,
+        title: 'Automatic recovery needs attention',
+        message: 'Automatic recovery stopped unexpectedly. The protected recording remains safe, and PulseStudio has returned to idle.'
+      });
+    });
+  }, Math.max(250, Number(delayMs) || 1500));
+  automaticRecoveryTimer.unref?.();
+}
+
+async function runRecoveryAttempt({ source = 'manual', includePaused = false } = {}) {
+  if (startupRecoveryInProgress) {
+    return { recovered: false, busy: true, message: 'Recovery is already running. You can stop it or let it continue in the background.' };
+  }
+  if (hasActiveCapture() || sealedRecordingSessions.size) {
+    return { recovered: false, busy: true, message: 'Finish the active recording or background save before recovering an earlier recording.' };
+  }
+  if (!listPendingRecoveries(recoveryDirectory()).length && !readRecoveryJournal()?.tempPath) {
+    return { recovered: true, none: true, message: 'No unfinished recordings need recovery.' };
+  }
+  if (includePaused) setUserPausedRecoveryState(false);
+  recoveryCancelRequested = false;
+  recoveryCancelReason = '';
+  recoveryRunSource = String(source || 'manual');
+  recoveryStartedAt = Date.now();
+  recoveryLastActivityAt = recoveryStartedAt;
+  startupRecoveryInProgress = true;
+  broadcastStartupRecoveryState();
+  armRecoveryWatchdog();
+  activityLog('info', 'recovery.run-started', { source: recoveryRunSource, pending: listPendingRecoveries(recoveryDirectory()).length });
+  try {
+    touchRecoveryActivity();
+    return await recoverInterruptedRecording({ includePaused });
+  } finally {
+    const completedSource = recoveryRunSource;
+    clearRecoveryWatchdog();
+    startupRecoveryInProgress = false;
+    recoveryCancelRequested = false;
+    recoveryCancelReason = '';
+    recoveryRunSource = '';
+    recoveryStartedAt = 0;
+    recoveryLastActivityAt = 0;
+    broadcastStartupRecoveryState();
+    activityLog('info', 'recovery.run-finished', { source: completedSource, pending: listPendingRecoveries(recoveryDirectory()).length });
+    setTimeout(() => { void updateManager?.resumeDeferred?.(); }, 0);
+  }
+}
+
 async function runStartupMaintenance(pendingRecoveryAtLaunch = hasPendingRecoveryWork()) {
   if (startupRecoveryStarted) return;
   startupRecoveryStarted = true;
 
-  // v0.2.90: interrupted media is protected at launch, but recovery is deliberately
-  // user-initiated. A multi-hour FFmpeg recovery must never consume the same CPU/GPU
-  // and disk bandwidth as a new live recording.
+  // v0.2.125: protected interrupted media is recovered automatically whenever the
+  // recorder is genuinely idle. Recovery remains cancellable, yields immediately to a
+  // new recording, and a watchdog pauses a stale run instead of leaving the app blocked.
   startupRecoveryInProgress = false;
   recoveryCancelRequested = false;
   recoveryCancelReason = '';
+  recoveryRunSource = '';
+  recoveryStartedAt = 0;
+  recoveryLastActivityAt = 0;
   if (pendingRecoveryAtLaunch) {
     const pending = listPendingRecoveries(recoveryDirectory());
-    const paused = pending.some((item) => item.manifest?.status === 'paused_by_user');
+    const paused = pending.some((item) => isRecoveryPausedManifest(item.manifest));
     if (!pendingRecoveryNotice) {
       pendingRecoveryNotice = {
         recovered: false,
         paused,
         available: true,
-        title: paused ? 'Unfinished recording saved for later' : 'Unfinished recording available',
-        message: 'The interrupted recording is protected. Recover it whenever convenient; new recordings are available normally and recovery is not running in the background.'
+        title: paused ? 'Unfinished recording saved for later' : 'Unfinished recording found',
+        message: paused
+          ? 'The interrupted recording is protected and recovery is paused. PulseStudio remains idle; recover it when convenient or discard it if you no longer need it.'
+          : 'The interrupted recording is protected. PulseStudio will recover it automatically while idle; you can stop recovery at any time.'
       };
     }
-    activityLog('warn', 'recovery.available-at-startup', { pending: pending.length, paused, automaticRecovery: false });
+    activityLog('warn', 'recovery.available-at-startup', { pending: pending.length, paused, automaticRecovery: !paused });
     broadcastStartupRecoveryState();
+    if (!paused) scheduleAutomaticRecovery(1200);
   }
   void videoEncoderManager.probe().catch((error) => {
     activityLog('warn', 'video-encoder.probe-failed', { error });
@@ -787,13 +954,15 @@ function setRecordingPerformanceWindowMode(enabled) {
       try { mainWindow.setVibrancy(null); } catch {}
     }
   } else if (!wantsActive && recordingPerformanceModeActive) {
-    const restore = recordingPerformanceWindowState || { opacity: 1 };
     recordingPerformanceModeActive = false;
     recordingPerformanceWindowState = null;
     if (process.platform === 'darwin') {
       try { mainWindow.setVibrancy('under-window'); } catch {}
     }
-    try { mainWindow.setOpacity(Math.max(0.5, Math.min(1, Number(restore.opacity) || 1))); } catch {}
+    // v0.2.126: Full View is always opaque. Transparency belongs exclusively to
+    // Mini View, so ending Full View recording performance mode must never restore
+    // an older translucent Full View opacity from a previous build/session.
+    try { mainWindow.setOpacity(1); } catch {}
   }
   return {
     active: recordingPerformanceModeActive,
@@ -2373,8 +2542,49 @@ async function cancelBackgroundProcessingForRecording(recordingPath) {
   return { cancelledAiJobs, childProcesses: children.length };
 }
 
+function finalizationCancellationError(sessionId) {
+  const error = new Error('Background recording save was stopped. The protected source remains available for recovery.');
+  error.code = 'FINALIZATION_CANCELLED';
+  error.sessionId = String(sessionId || '');
+  return error;
+}
+
+function throwIfFinalizationCancelled(sessionId = finalizationProcessContext.getStore()?.sessionId) {
+  const key = String(sessionId || '');
+  if (key && cancelledFinalizationSessions.has(key)) throw finalizationCancellationError(key);
+}
+
+function registerFinalizationChild(sessionId, child) {
+  const key = String(sessionId || '');
+  if (!key || !child) return () => {};
+  if (!activeFinalizationChildren.has(key)) activeFinalizationChildren.set(key, new Set());
+  const children = activeFinalizationChildren.get(key);
+  children.add(child);
+  return () => {
+    children.delete(child);
+    if (!children.size) activeFinalizationChildren.delete(key);
+  };
+}
+
+function cancelFinalizationSession(sessionId) {
+  const key = String(sessionId || '');
+  if (!key || !sealedRecordingSessions.has(key)) return false;
+  cancelledFinalizationSessions.add(key);
+  const children = [...(activeFinalizationChildren.get(key) || [])];
+  for (const child of children) {
+    try { child.kill('SIGTERM'); } catch {}
+    const timer = setTimeout(() => {
+      try { if (child.exitCode == null && child.signalCode == null) child.kill('SIGKILL'); } catch {}
+    }, 1200);
+    timer.unref?.();
+  }
+  activityLog('warn', 'recording.finalization-cancel-requested', { sessionId: key, childProcesses: children.length });
+  return true;
+}
+
 function runProcess(command, args, options = {}) {
   const recoveryTask = Boolean(recoveryProcessContext.getStore()?.recoveryTask);
+  const finalizationSessionId = String(finalizationProcessContext.getStore()?.sessionId || '');
   const processingRecordingPath = recordingProcessingContext.getStore()?.recordingPath
     ? path.resolve(String(recordingProcessingContext.getStore().recordingPath))
     : '';
@@ -2388,17 +2598,19 @@ function runProcess(command, args, options = {}) {
     if (path.isAbsolute(text)) return path.basename(text);
     return text.length > 320 ? `${text.slice(0, 317)}...` : text;
   });
-  activityLog('info', 'process.start', { command: commandName, args: loggedArgs, recoveryTask });
+  activityLog('info', 'process.start', { command: commandName, args: loggedArgs, recoveryTask, finalizationSessionId });
   return new Promise((resolve, reject) => {
     if (recoveryTask && recoveryCancelRequested) return reject(recoveryCancellationError());
+    if (finalizationSessionId && cancelledFinalizationSessions.has(finalizationSessionId)) return reject(finalizationCancellationError(finalizationSessionId));
     if (processingRecordingPath && cancelledRecordingProcessing.has(processingRecordingPath)) return reject(processingCancellationError(processingRecordingPath));
     const child = spawn(command, args, { windowsHide: true, ...options });
-    if (recoveryTask) activeRecoveryChildren.add(child);
+    if (recoveryTask) { activeRecoveryChildren.add(child); touchRecoveryActivity(); }
+    const unregisterFinalizationChild = registerFinalizationChild(finalizationSessionId, child);
     const unregisterProcessingChild = registerRecordingProcessingChild(processingRecordingPath, child);
     let stdout = '';
     let stderr = '';
     let settled = false;
-    const cleanup = () => { if (recoveryTask) activeRecoveryChildren.delete(child); unregisterProcessingChild(); };
+    const cleanup = () => { if (recoveryTask) activeRecoveryChildren.delete(child); unregisterFinalizationChild(); unregisterProcessingChild(); };
     const rejectOnce = (error) => {
       if (settled) return;
       settled = true;
@@ -2413,11 +2625,16 @@ function runProcess(command, args, options = {}) {
       activityLog('info', 'process.complete', { command: commandName, durationMs: Date.now() - startedAt, stderrTail: stderr.slice(-1200) });
       resolve(value);
     };
-    child.stdout?.on('data', (d) => { stdout += d.toString(); });
-    child.stderr?.on('data', (d) => { stderr += d.toString(); });
-    child.on('error', (error) => rejectOnce(recoveryTask && recoveryCancelRequested ? recoveryCancellationError() : error));
+    child.stdout?.on('data', (d) => { stdout += d.toString(); if (recoveryTask) touchRecoveryActivity(); });
+    child.stderr?.on('data', (d) => { stderr += d.toString(); if (recoveryTask) touchRecoveryActivity(); });
+    child.on('error', (error) => rejectOnce(
+      recoveryTask && recoveryCancelRequested ? recoveryCancellationError()
+        : finalizationSessionId && cancelledFinalizationSessions.has(finalizationSessionId) ? finalizationCancellationError(finalizationSessionId)
+          : error
+    ));
     child.on('close', (code) => {
       if (recoveryTask && recoveryCancelRequested) return rejectOnce(recoveryCancellationError());
+      if (finalizationSessionId && cancelledFinalizationSessions.has(finalizationSessionId)) return rejectOnce(finalizationCancellationError(finalizationSessionId));
       if (processingRecordingPath && cancelledRecordingProcessing.has(processingRecordingPath)) return rejectOnce(processingCancellationError(processingRecordingPath));
       if (code === 0) resolveOnce({ stdout, stderr });
       else rejectOnce(new Error(stderr || stdout || `Process exited with code ${code}`));
@@ -2572,7 +2789,7 @@ function updateSealedRecoveryManifest(sealed, extra = {}) {
   } catch {}
 }
 
-async function finalizeSealedRecording(sessionId) {
+async function finalizeSealedRecordingInternal(sessionId) {
   const key = String(sessionId || '');
   const sealed = sealedRecordingSessions.get(key);
   if (!sealed) throw new Error('The stopped recording is no longer available for finalization.');
@@ -2584,6 +2801,7 @@ async function finalizeSealedRecording(sessionId) {
   const runtimeMarkers = normalizeMarkers(meta.markers || []);
 
   try {
+    throwIfFinalizationCancelled(key);
     if (kind === 'audio') {
       await transcodeToM4a(sealed.tempPath, outputPath);
     } else if (requestedVideoCodec === 'h264' && sealed.mimeType?.includes('mp4')) {
@@ -2617,7 +2835,9 @@ async function finalizeSealedRecording(sessionId) {
     } else {
       meta.videoEncoding = await transcodeToMp4(sealed.tempPath, outputPath, requestedVideoCodec);
     }
+    throwIfFinalizationCancelled(key);
     if (meta.applicationAudioPath) await mergeApplicationAudio(outputPath, meta.applicationAudioPath, kind, false);
+    throwIfFinalizationCancelled(key);
     if (MY_VOICE_HIGHLIGHTS_ENABLED && sealed.microphonePath && fs.existsSync(sealed.microphonePath) && fs.statSync(sealed.microphonePath).size >= 128 && Array.isArray(meta.voiceHighlights) && meta.voiceHighlights.length) {
       try {
         const { refineVoiceHighlightsAgainstReference } = require('./lib/voice-highlights');
@@ -2643,6 +2863,7 @@ async function finalizeSealedRecording(sessionId) {
         activityLog('warn', 'recording.voice-highlights-refine-failed', { outputFile: path.basename(outputPath), error });
       }
     }
+    throwIfFinalizationCancelled(key);
     if (sealed.microphonePath && fs.existsSync(sealed.microphonePath) && fs.statSync(sealed.microphonePath).size >= 128) {
       meta.microphoneCleanup = await postProcessAndMixMicrophone(
         outputPath,
@@ -2657,6 +2878,7 @@ async function finalizeSealedRecording(sessionId) {
         Math.max(0, Number(meta.microphoneStartOffsetMs || sealed.meta?.microphoneStartOffsetMs) || 0)
       );
     }
+    throwIfFinalizationCancelled(key);
     if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size < 1024) throw new Error('Final output validation failed: saved file is empty or missing.');
     if (kind === 'video') await validatePlayableVideoFile(outputPath);
     if (runtimeMarkers.length) {
@@ -2676,6 +2898,7 @@ async function finalizeSealedRecording(sessionId) {
       activityLog('info', 'recording.voice-highlights-persisted', { outputFile: path.basename(outputPath), count: savedVoiceHighlights.length, method: meta.voiceHighlightMethod || 'mic-system-readonly' });
     } else meta.voiceHighlightCount = 0;
 
+    throwIfFinalizationCancelled(key);
     if (meta.applicationAudioPath) { try { if (fs.existsSync(meta.applicationAudioPath)) fs.unlinkSync(meta.applicationAudioPath); } catch {} }
     if (sealed.microphonePath) { try { if (fs.existsSync(sealed.microphonePath)) fs.unlinkSync(sealed.microphonePath); } catch {} }
     if (sealed.neuralMicrophonePath) { try { if (fs.existsSync(sealed.neuralMicrophonePath)) fs.unlinkSync(sealed.neuralMicrophonePath); } catch {} }
@@ -2696,8 +2919,13 @@ async function finalizeSealedRecording(sessionId) {
     });
     sealedRecordingSessions.delete(key);
     releaseReservedRecordingPath(outputPath);
+    const wasStoppedByUser = error?.code === 'FINALIZATION_CANCELLED';
+    if (wasStoppedByUser) setRecoveryPausedState(true, 'user');
+    else scheduleAutomaticRecovery(1800);
     const recoveryNote = sealed.pendingManifestPath
-      ? ` Recovery copy protected (${sealed.id}); it will be retried automatically on next launch.`
+      ? (wasStoppedByUser
+        ? ` Recovery copy protected (${sealed.id}) and paused for later.`
+        : ` Recovery copy protected (${sealed.id}); PulseStudio will retry it automatically while idle.`)
       : ' The source capture was left in the recovery folder.';
     throw new Error(`Could not create ${kind === 'audio' ? 'M4A' : 'MP4'} in ${path.dirname(outputPath)}: ${error.message}.${recoveryNote}`);
   }
@@ -2744,6 +2972,19 @@ async function finalizeSealedRecording(sessionId) {
     markerCount: Number(meta.markerCount) || 0,
     voiceHighlightCount: Number(meta.voiceHighlightCount) || 0
   };
+}
+
+async function finalizeSealedRecording(sessionId) {
+  const key = String(sessionId || '');
+  return finalizationProcessContext.run({ sessionId: key }, async () => {
+    try {
+      return await finalizeSealedRecordingInternal(key);
+    } finally {
+      cancelledFinalizationSessions.delete(key);
+      activeFinalizationChildren.delete(key);
+      setTimeout(() => { void updateManager?.resumeDeferred?.(); }, 0);
+    }
+  });
 }
 
 function normalizeVideoCodec(value) {
@@ -3647,7 +3888,7 @@ async function recoverOneJournal(journal, manifestPath = null) {
 
 async function recoverInterruptedRecording(options = {}) {
   const includePaused = Boolean(options.includePaused);
-  const candidates = listPendingRecoveries(recoveryDirectory()).filter((item) => includePaused || item.manifest?.status !== 'paused_by_user');
+  const candidates = listPendingRecoveries(recoveryDirectory()).filter((item) => includePaused || !isRecoveryPausedManifest(item.manifest));
   const active = readRecoveryJournal();
   if (active?.tempPath && !activeTempPath) candidates.push({ manifestPath: null, manifest: active });
   if (!candidates.length) return null;
@@ -3659,7 +3900,7 @@ async function recoverInterruptedRecording(options = {}) {
     if (result?.cancelled || recoveryCancelRequested) break;
   }
   if (recoveryCancelRequested || results.some((item) => item.cancelled)) {
-    const pausedByUser = listPendingRecoveries(recoveryDirectory()).some((item) => item.manifest?.status === 'paused_by_user');
+    const pausedByUser = listPendingRecoveries(recoveryDirectory()).some((item) => isRecoveryPausedManifest(item.manifest));
     return {
       recovered: false,
       cancelled: true,
@@ -4418,12 +4659,143 @@ function mediaResponseForRequest(request, filePath) {
 }
 
 
-function updateSafetyState() {
-  if (activeTempPath || activeWriteStream || activeMicWriteStream || activeNeuralMicWriteStream || sealedRecordingSessions.size) return { safe: false, reason: 'recording or saving finishes' };
-  if (aiWorkerManager.snapshot().activeId) return { safe: false, reason: 'local AI processing finishes' };
+function isInsideRecoveryDirectory(filePath) {
+  if (!filePath) return false;
+  const root = path.resolve(recoveryDirectory());
+  const candidate = path.resolve(String(filePath));
+  if (process.platform === 'win32') {
+    const r = root.toLowerCase();
+    const c = candidate.toLowerCase();
+    return c === r || c.startsWith(`${r}${path.sep}`);
+  }
+  return candidate === root || candidate.startsWith(`${root}${path.sep}`);
+}
+
+function removeRecoveryFileIfSafe(filePath) {
+  if (!isInsideRecoveryDirectory(filePath)) return false;
+  try {
+    if (!fs.existsSync(filePath)) return false;
+    fs.rmSync(filePath, { force: true });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function discardProtectedRecoveries() {
+  if (hasActiveCapture()) return { ok: false, reason: 'Stop the active recording before discarding protected recovery data.' };
+  if (startupRecoveryInProgress) return { ok: false, reason: 'Stop recovery first, then discard the protected recording.' };
+  if (sealedRecordingSessions.size) return { ok: false, reason: 'A stopped recording is still being saved. Stop background work first, then discard recovery if needed.' };
+
   const pending = listPendingRecoveries(recoveryDirectory());
-  if (pending.length) return { safe: false, reason: `${pending.length === 1 ? 'an unfinished recording is recovered' : 'unfinished recordings are recovered'}` };
-  return { safe: true, reason: '' };
+  const activeJournal = readRecoveryJournal();
+  const manifests = [...pending.map((item) => ({ ...item, isActive: false }))];
+  if (activeJournal?.tempPath) manifests.push({ manifestPath: recoveryJournalPath(), manifest: activeJournal, isActive: true });
+  if (!manifests.length) return { ok: true, discarded: 0, filesRemoved: 0, message: 'No protected recovery items remain.' };
+
+  const candidatePaths = new Set();
+  for (const item of manifests) {
+    const manifest = item.manifest || {};
+    for (const value of [manifest.tempPath, manifest.microphonePath, manifest.neuralMicrophonePath, manifest.partialOutputPath, manifest.applicationAudioPath]) {
+      if (value) candidatePaths.add(path.resolve(String(value)));
+    }
+    for (const value of Array.isArray(manifest.applicationAudioPaths) ? manifest.applicationAudioPaths : []) {
+      if (value) candidatePaths.add(path.resolve(String(value)));
+    }
+  }
+
+  let filesRemoved = 0;
+  for (const filePath of candidatePaths) if (removeRecoveryFileIfSafe(filePath)) filesRemoved += 1;
+  for (const item of pending) { try { fs.rmSync(item.manifestPath, { force: true }); } catch {} }
+  if (activeJournal?.tempPath) clearRecoveryJournal();
+  pendingRecoveryNotice = null;
+  activityLog('warn', 'recovery.discarded-by-user', { items: manifests.length, filesRemoved });
+  broadcastStartupRecoveryState();
+  setTimeout(() => { void updateManager?.resumeDeferred?.(); }, 0);
+  return { ok: true, discarded: manifests.length, filesRemoved, message: `${manifests.length} protected recovery item${manifests.length === 1 ? '' : 's'} discarded.` };
+}
+
+async function stopBackgroundWork() {
+  if (hasActiveCapture()) {
+    return { ok: false, recordingActive: true, reason: 'A recording is in progress. Stop the recording before terminating background work.' };
+  }
+
+  const recoveryResult = startupRecoveryInProgress
+    ? requestRecoveryCancellation('Recovery was stopped from About & Diagnostics. The unfinished recording remains protected for later.', { pauseMode: 'user' })
+    : { requested: false };
+  const cancelledAiJobs = aiWorkerManager.cancelWhere(() => true);
+
+  const finalizationIds = [...sealedRecordingSessions.keys()];
+  let cancelledFinalizations = 0;
+  for (const sessionId of finalizationIds) if (cancelFinalizationSession(sessionId)) cancelledFinalizations += 1;
+
+  let cancelledMediaProcesses = 0;
+  const cancelledPaths = [];
+  for (const [recordingPath, children] of activeRecordingProcessingChildren.entries()) {
+    cancelledRecordingProcessing.add(recordingPath);
+    cancelledPaths.push(recordingPath);
+    for (const child of [...children]) {
+      try {
+        child.kill('SIGTERM');
+        cancelledMediaProcesses += 1;
+        const timer = setTimeout(() => {
+          try { if (child.exitCode == null && child.signalCode == null) child.kill('SIGKILL'); } catch {}
+        }, 1200);
+        timer.unref?.();
+      } catch {}
+    }
+  }
+  for (const recordingPath of cancelledPaths) {
+    setTimeout(() => cancelledRecordingProcessing.delete(recordingPath), 30000).unref?.();
+  }
+
+  activityLog('warn', 'background.stop-all-requested', {
+    recovery: Boolean(recoveryResult.requested),
+    aiJobs: cancelledAiJobs,
+    finalizations: cancelledFinalizations,
+    mediaProcesses: cancelledMediaProcesses
+  });
+
+  const deadline = Date.now() + 4500;
+  while (Date.now() < deadline) {
+    const state = updateSafetyState();
+    if (state.safe) break;
+    await new Promise((resolve) => setTimeout(resolve, 150));
+  }
+  const safety = updateSafetyState();
+  if (safety.safe) setTimeout(() => { void updateManager?.resumeDeferred?.(); }, 0);
+  return {
+    ok: true,
+    idle: Boolean(safety.safe),
+    remainingBlocker: safety.safe ? '' : (safety.message || safety.reason || 'Background work is still stopping.'),
+    recoveryStopped: Boolean(recoveryResult.requested),
+    cancelledAiJobs,
+    cancelledFinalizations,
+    cancelledMediaProcesses
+  };
+}
+
+function updateSafetyState() {
+  if (hasActiveCapture()) {
+    return { safe: false, blocker: 'recording', reason: 'the active recording stops', message: 'Update check paused — a recording is currently in progress.' };
+  }
+  if (sealedRecordingSessions.size) {
+    return { safe: false, blocker: 'saving', reason: 'the stopped recording finishes saving', message: 'Update check paused — a stopped recording is still being saved. You can wait or use Stop background work.' };
+  }
+  if (startupRecoveryInProgress) {
+    return { safe: false, blocker: 'recovery', reason: 'recovery finishes or is stopped', message: 'Update check paused — recovery is currently running. You can wait or use Stop background work.' };
+  }
+  const ai = aiWorkerManager.snapshot();
+  if (ai.activeId || ai.jobs.length) {
+    return { safe: false, blocker: 'ai', reason: 'local AI processing finishes or is stopped', message: 'Update check paused — local AI processing is active. You can wait or use Stop background work.' };
+  }
+  if (activeRecordingProcessingChildren.size) {
+    return { safe: false, blocker: 'background', reason: 'background media processing finishes or is stopped', message: 'Update check paused — background media processing is active. You can wait or use Stop background work.' };
+  }
+  // A protected but idle recovery item is data on disk, not active work. It is stored
+  // under userData/recovery and survives portable app updates, so it must never keep
+  // PulseStudio permanently non-idle or prevent checking/installing a new release.
+  return { safe: true, blocker: '', reason: '', protectedRecoveries: listPendingRecoveries(recoveryDirectory()).length };
 }
 
 const ZIP_CRC_TABLE = (() => {
@@ -4552,6 +4924,11 @@ function diagnosticsSnapshot() {
   } : { screen: 'system-managed', microphone: 'system-managed', camera: 'system-managed' };
   const ai = aiWorkerManager.snapshot();
   const models = localModelManager.summary();
+  const pendingRecoveries = listPendingRecoveries(recoveryDirectory());
+  const pausedRecoveries = pendingRecoveries.filter((item) => isRecoveryPausedManifest(item.manifest)).length;
+  const activeCapture = hasActiveCapture();
+  const backgroundMediaProcesses = [...activeRecordingProcessingChildren.values()].reduce((count, children) => count + children.size, 0);
+  const backgroundCancellable = !activeCapture && Boolean(startupRecoveryInProgress || sealedRecordingSessions.size || ai.jobs.length || backgroundMediaProcesses);
   return {
     productName: app.getName(), version: app.getVersion(), packaged: app.isPackaged,
     platform: process.platform, arch: process.arch, release: os.release(),
@@ -4561,7 +4938,23 @@ function diagnosticsSnapshot() {
     logFile: activityLogger.filePath || path.resolve(__dirname, 'logs', 'pulsestudio.log'),
     permissions, videoEncoding: videoEncoderManager.capabilities(),
     ai: { workerAlive: ai.workerAlive, activeJobs: ai.jobs.length, activeId: ai.activeId || '', paused: Boolean(ai.paused), pauseReason: ai.pauseReason || '' },
-    recovery: { pending: listPendingRecoveries(recoveryDirectory()).length, active: Boolean(activeTempPath || activeWriteStream || sealedRecordingSessions.size), finalizing: sealedRecordingSessions.size },
+    recovery: {
+      pending: pendingRecoveries.length,
+      paused: pausedRecoveries,
+      active: activeCapture,
+      recovering: Boolean(startupRecoveryInProgress),
+      recoverySource: recoveryRunSource || '',
+      recoveryStartedAt: recoveryStartedAt || 0,
+      recoveryLastActivityAt: recoveryLastActivityAt || 0,
+      finalizing: sealedRecordingSessions.size
+    },
+    background: {
+      cancellable: backgroundCancellable,
+      aiJobs: ai.jobs.length,
+      finalizing: sealedRecordingSessions.size,
+      recovery: Boolean(startupRecoveryInProgress),
+      mediaProcesses: backgroundMediaProcesses
+    },
     recordingHealth: recordingHealthSnapshot(),
     lastRecording: lastRecordingDiagnosticMeta,
     audioProcessing: { ffmpegPath: safeFfmpegPath(), rnnoise: rnnoiseAssetStatus() },
@@ -4657,15 +5050,17 @@ app.whenReady().then(async () => {
   stageInterruptedActiveJournalForRecovery();
   const pendingRecoveryAtLaunch = hasPendingRecoveryWork();
   const startupPendingRecoveries = listPendingRecoveries(recoveryDirectory());
-  const pausedRecoveryAtLaunch = startupPendingRecoveries.some((item) => item.manifest?.status === 'paused_by_user');
+  const pausedRecoveryAtLaunch = startupPendingRecoveries.some((item) => isRecoveryPausedManifest(item.manifest));
   startupRecoveryInProgress = false;
   if (pendingRecoveryAtLaunch || pausedRecoveryAtLaunch) {
     pendingRecoveryNotice = {
       recovered: false,
       paused: pausedRecoveryAtLaunch,
       available: true,
-      title: pausedRecoveryAtLaunch ? 'Unfinished recording saved for later' : 'Unfinished recording available',
-      message: 'The interrupted recording is protected. Recover it whenever convenient; new recordings are available normally and no recovery work runs in the background.'
+      title: pausedRecoveryAtLaunch ? 'Unfinished recording saved for later' : 'Unfinished recording found',
+      message: pausedRecoveryAtLaunch
+        ? 'The interrupted recording is protected and recovery is paused. PulseStudio remains idle; recover it later or discard it if you no longer need it.'
+        : 'The interrupted recording is protected. PulseStudio will begin recovery automatically while idle; you can stop recovery at any time.'
     };
   }
   createWindow();
@@ -4846,6 +5241,8 @@ ipcMain.handle('window:set-compact', (_event, compact) => {
       const target = fullWindowBounds || { x: currentBounds.x, y: currentBounds.y, width: 1320, height: 900 };
       mainWindow.setBounds(target, false);
       activeWindowMode = 'full';
+      // v0.2.126: Full View must never inherit Mini View transparency.
+      try { mainWindow.setOpacity(1); } catch {}
       fullWindowBounds = { ...mainWindow.getBounds() };
     }
   } finally {
@@ -4943,20 +5340,22 @@ ipcMain.handle('window:set-capture-privacy', (event, enabled) => {
 });
 
 ipcMain.handle('window:set-transparency', (_event, percent) => {
-  if (!mainWindow || mainWindow.isDestroyed()) return { percent: 0, opacity: 1 };
+  if (!mainWindow || mainWindow.isDestroyed()) return { percent: 0, opacity: 1, miniOnly: true };
   const allowed = new Set([0, 10, 20, 30, 50]);
   const requested = Number(percent);
   const value = allowed.has(requested) ? requested : 0;
   const opacity = Math.max(0.5, Math.min(1, 1 - (value / 100)));
-  if (recordingPerformanceModeActive && activeWindowMode === 'full') {
-    // Remember a preference changed during capture, but keep the temporary opaque
-    // performance surface until recording ends.
-    if (!recordingPerformanceWindowState) recordingPerformanceWindowState = { opacity };
-    else recordingPerformanceWindowState.opacity = opacity;
-    return { percent: value, opacity: 1, deferredUntilRecordingStops: true };
+
+  // v0.2.126: transparency is intentionally Mini View-only. The renderer may
+  // still let a Full View user choose the saved Mini preference, but the native
+  // Full window itself is always kept at opacity 1.
+  if (activeWindowMode !== 'compact') {
+    try { mainWindow.setOpacity(1); } catch {}
+    return { percent: value, opacity: 1, miniOnly: true, deferredUntilMiniView: value > 0 };
   }
+
   try { mainWindow.setOpacity(opacity); } catch {}
-  return { percent: value, opacity };
+  return { percent: value, opacity, miniOnly: true };
 });
 
 ipcMain.handle('window:set-recording-performance', (event, enabled) => {
@@ -5344,34 +5743,18 @@ ipcMain.handle('recording:startup-recovery-state', () => startupRecoveryStateSna
 
 ipcMain.handle('recording:retry-recovery', async () => {
   activityLog('info', 'recovery.manual-retry-requested', { pending: listPendingRecoveries(recoveryDirectory()).length });
-  if (startupRecoveryInProgress) {
-    return { recovered: false, busy: true, message: 'Recovery is already running. You can stop it or let it continue in the background.' };
-  }
-  if (activeTempPath || activeWriteStream || activeMicWriteStream || activeNeuralMicWriteStream || sealedRecordingSessions.size) {
-    return { recovered: false, busy: true, message: 'Finish the current recording or background save before manually recovering an earlier one.' };
-  }
-  setUserPausedRecoveryState(false);
-  recoveryCancelRequested = false;
-  recoveryCancelReason = '';
-  startupRecoveryInProgress = true;
-  broadcastStartupRecoveryState();
-  try {
-    const result = await recoverInterruptedRecording({ includePaused: true });
-    return result || { recovered: true, none: true, message: 'No unfinished recordings need recovery.' };
-  } finally {
-    startupRecoveryInProgress = false;
-    recoveryCancelRequested = false;
-    recoveryCancelReason = '';
-    broadcastStartupRecoveryState();
-  }
+  return runRecoveryAttempt({ source: 'manual', includePaused: true });
 });
 
 ipcMain.handle('recording:cancel-recovery', () => {
   return requestRecoveryCancellation(
     'Recovery was stopped. The unfinished recording remains protected and can be recovered later.',
-    { pauseForUser: true }
+    { pauseMode: 'user' }
   );
 });
+
+ipcMain.handle('recording:discard-recovery', () => discardProtectedRecoveries());
+ipcMain.handle('app:stop-background-work', () => stopBackgroundWork());
 
 ipcMain.handle('recording:open-recovery-folder', () => {
   const dir = recoveryDirectory();
