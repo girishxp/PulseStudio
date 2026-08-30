@@ -19,11 +19,14 @@ const { LocalModelManager } = require('./lib/model-manager');
 const { RecoveryAwareUpdateManager } = require('./lib/update-manager');
 const { ActivityLogger } = require('./lib/activity-logger');
 const { AnalyticsManager } = require('./lib/analytics-manager');
-const { refineVoiceHighlightsAgainstReference } = require('./lib/voice-highlights');
 
 const APP_DISPLAY_NAME = 'PulseStudio';
 const APP_USER_MODEL_ID = 'com.girishxp.pulsestudio';
 const APP_ICON_PATH = path.join(__dirname, 'assets', 'pulsestudio-icon.png');
+// v0.2.123 diagnostic isolation: My Voice highlighting is fully disabled.
+// Keep the implementation available for a later controlled re-enable, but do not
+// analyze, refine, persist, or expose highlight segments in this build.
+const MY_VOICE_HIGHLIGHTS_ENABLED = false;
 const APP_USER_DATA_PATH = path.join(app.getPath('appData'), APP_DISPLAY_NAME);
 try { app.setPath('userData', APP_USER_DATA_PATH); } catch {}
 let analyticsManager = null;
@@ -1534,6 +1537,7 @@ function normalizeVoiceHighlights(segments, durationSeconds = Infinity) {
 }
 
 function voiceHighlightsForRecording(recordingPath) {
+  if (!MY_VOICE_HIGHLIGHTS_ENABLED) return [];
   const safe = safeRecordingPath(recordingPath);
   const metadata = loadVoiceHighlightsMetadata();
   const entry = metadata[path.basename(safe)];
@@ -1541,6 +1545,7 @@ function voiceHighlightsForRecording(recordingPath) {
 }
 
 function saveVoiceHighlightsForRecording(recordingPath, segments, details = {}) {
+  if (!MY_VOICE_HIGHLIGHTS_ENABLED) return [];
   const safe = safeRecordingPath(recordingPath);
   if (!fs.existsSync(safe)) throw new Error('Recording was not found.');
   const metadata = loadVoiceHighlightsMetadata();
@@ -1558,6 +1563,7 @@ function saveVoiceHighlightsForRecording(recordingPath, segments, details = {}) 
 }
 
 async function refineVoiceHighlightsWithEnrollment(recordingPath) {
+  if (!MY_VOICE_HIGHLIGHTS_ENABLED) return null;
   const profile = loadVoiceProfile();
   if (!profile?.embedding?.length) return null;
   const safe = safeRecordingPath(recordingPath);
@@ -1601,6 +1607,7 @@ async function refineVoiceHighlightsWithEnrollment(recordingPath) {
 }
 
 function migrateRecordingVoiceHighlights(oldPath, newPath) {
+  if (!MY_VOICE_HIGHLIGHTS_ENABLED) return;
   const metadata = loadVoiceHighlightsMetadata();
   const oldKey = path.basename(oldPath);
   const newKey = path.basename(newPath);
@@ -1612,6 +1619,7 @@ function migrateRecordingVoiceHighlights(oldPath, newPath) {
 }
 
 function removeRecordingVoiceHighlights(recordingPath) {
+  if (!MY_VOICE_HIGHLIGHTS_ENABLED) return;
   const metadata = loadVoiceHighlightsMetadata();
   const key = path.basename(recordingPath);
   if (metadata[key]) {
@@ -2267,7 +2275,7 @@ async function generateSpeakerDiarization(recordingPath, force = false) {
 }
 
 function getOrGenerateSpeakerDiarization(recordingPath, force = false) {
-  const safe = safeRecordingPath(recordingPath);
+  const safe = analysisReadyRecordingPath(recordingPath);
   if (automaticDiarizationJobs.has(safe)) return automaticDiarizationJobs.get(safe);
   const job = recordingProcessingContext.run({ recordingPath: safe }, () => generateSpeakerDiarization(safe, force))
     .finally(() => automaticDiarizationJobs.delete(safe));
@@ -2311,33 +2319,6 @@ function mergeRecordingSpeakerLabels(recordingPath, sourceSpeaker, targetSpeaker
 function safeFfmpegPath() {
   if (!ffmpegPath) return null;
   return ffmpegPath.replace('app.asar', 'app.asar.unpacked');
-}
-
-let cachedFfmpegMajorVersion = null;
-async function ffmpegMajorVersion(executable = safeFfmpegPath()) {
-  if (Number.isInteger(cachedFfmpegMajorVersion) && cachedFfmpegMajorVersion > 0) return cachedFfmpegMajorVersion;
-  if (!executable || !fs.existsSync(executable)) return 6;
-  try {
-    const result = await runProcess(executable, ['-version']);
-    const text = `${result?.stdout || ''}
-${result?.stderr || ''}`;
-    const match = text.match(/ffmpeg version\s+(?:n)?(\d+)/i);
-    const major = Number(match?.[1]);
-    if (Number.isInteger(major) && major > 0) {
-      cachedFfmpegMajorVersion = major;
-      return major;
-    }
-  } catch {}
-  // ffmpeg-static 5.2.0 used by this project ships FFmpeg 6.x. Prefer its residual
-  // semantics if version probing ever fails rather than dropping the microphone.
-  return 6;
-}
-
-function adaptiveNlmsResidualMode(majorVersion) {
-  // FFmpeg 6: out_mode=n returns desired - estimated echo. FFmpeg 7+ changed the
-  // mode semantics so out_mode=o is the residual. Choosing by major version avoids
-  // the v0.2.102-v0.2.103 failure where unsupported out_mode=e forced direct mixing.
-  return Number(majorVersion) >= 7 ? 'o' : 'n';
 }
 
 function processingCancellationError(recordingPath) {
@@ -2637,8 +2618,9 @@ async function finalizeSealedRecording(sessionId) {
       meta.videoEncoding = await transcodeToMp4(sealed.tempPath, outputPath, requestedVideoCodec);
     }
     if (meta.applicationAudioPath) await mergeApplicationAudio(outputPath, meta.applicationAudioPath, kind, false);
-    if (sealed.microphonePath && fs.existsSync(sealed.microphonePath) && fs.statSync(sealed.microphonePath).size >= 128 && Array.isArray(meta.voiceHighlights) && meta.voiceHighlights.length) {
+    if (MY_VOICE_HIGHLIGHTS_ENABLED && sealed.microphonePath && fs.existsSync(sealed.microphonePath) && fs.statSync(sealed.microphonePath).size >= 128 && Array.isArray(meta.voiceHighlights) && meta.voiceHighlights.length) {
       try {
+        const { refineVoiceHighlightsAgainstReference } = require('./lib/voice-highlights');
         const refinedVoiceHighlights = await refineVoiceHighlightsAgainstReference({
           ffmpegPath: safeFfmpegPath(),
           micPath: sealed.microphonePath,
@@ -2682,7 +2664,9 @@ async function finalizeSealedRecording(sessionId) {
       meta.markerCount = savedMarkers.length;
       activityLog('info', 'recording.markers-persisted', { outputFile: path.basename(outputPath), markerCount: savedMarkers.length });
     } else meta.markerCount = 0;
-    const runtimeVoiceHighlights = normalizeVoiceHighlights(meta.voiceHighlights || [], Math.max(0, Number(meta.durationMs) || 0) / 1000);
+    const runtimeVoiceHighlights = MY_VOICE_HIGHLIGHTS_ENABLED
+      ? normalizeVoiceHighlights(meta.voiceHighlights || [], Math.max(0, Number(meta.durationMs) || 0) / 1000)
+      : [];
     if (runtimeVoiceHighlights.length) {
       const savedVoiceHighlights = saveVoiceHighlightsForRecording(outputPath, runtimeVoiceHighlights, {
         durationSeconds: Math.max(0, Number(meta.durationMs) || 0) / 1000,
@@ -3441,73 +3425,46 @@ async function mixMicrophoneIntoRecording(basePath, micPath, recordingKind = 'vi
   if (!executable || !fs.existsSync(executable)) throw new Error('FFmpeg is unavailable for microphone mixing.');
   if (!fs.existsSync(micPath) || fs.statSync(micPath).size < 128) return basePath;
   const hasBaseAudio = await fileHasAudioStream(basePath);
-  const ffmpegMajor = hasBaseAudio ? await ffmpegMajorVersion(executable) : 0;
-  const nlmsResidualMode = adaptiveNlmsResidualMode(ffmpegMajor || 6);
-  const requestedMicFilter = String(options.micFilter || 'highpass=f=70').trim() || 'highpass=f=70';
-  // v0.2.96: do not apply a broadband +1 dB lift here. It raised fan/air noise by
-  // exactly the same amount as speech. Voice presence is now shaped inside the
-  // noise-mode filter, while this final stage only limits peaks.
+  const requestedMicFilter = String(options.micFilter || 'highpass=f=65:p=2').trim() || 'highpass=f=65:p=2';
   const delayMs = Math.max(0, Math.round(Number(options.delayMs) || 0));
   const delayFilter = delayMs > 0 ? `adelay=${delayMs}:all=1,` : '';
-  const micFilter = `${delayFilter}${requestedMicFilter},alimiter=limit=0.95`;
+  // v0.2.122: capture-time WebRTC AEC/RNNoise is authoritative. Finalization must
+  // never run a second adaptive echo canceller or auto-raise microphone loudness.
+  // The final limiter only attenuates peaks (level=disabled); it cannot normalize upward.
+  const micFilter = `${delayFilter}${requestedMicFilter}`;
+  const standaloneMicFilter = `${micFilter},alimiter=limit=0.97:level=disabled`;
   const ext = recordingKind === 'audio' ? 'm4a' : 'mp4';
   const merged = path.join(path.dirname(basePath), `.${path.basename(basePath, path.extname(basePath))}.microphone-${Date.now()}.${ext}`);
   try {
-    const adaptiveEchoGraph = [
-      // Keep the clean system/application audio untouched for the final mix while a
-      // mono copy acts only as the acoustic reference. NLMS learns the delayed room/
-      // laptop-speaker copy inside the mic and outputs the residual mic signal. Local
-      // speech is uncorrelated with the reference, so it remains even when both people
-      // talk at the same time. FFmpeg anlms input #0 is the adaptive input/reference
-      // and input #1 is the desired mic signal. FFmpeg 6 and 7+ use different symbolic
-      // output-mode semantics, so nlmsResidualMode is selected from the installed major
-      // version instead of relying on an unsupported/incorrect fixed mode.
-      '[0:a]aresample=48000,asplit=2[base][refraw]',
-      '[refraw]aformat=channel_layouts=mono[ref]',
-      `[1:a]aresample=48000,${micFilter},aformat=channel_layouts=mono[mic]`,
-      `[ref][mic]anlms=order=8192:mu=0.16:eps=0.0001:leakage=0.00001:out_mode=${nlmsResidualMode}[deecho]`,
-      '[base][deecho]amix=inputs=2:duration=longest:dropout_transition=2:normalize=0,alimiter=limit=0.95[a]'
+    // Keep system/application audio stereo. The mono microphone is duplicated to L/R
+    // before mixing, so remote/system left-right information is not collapsed to mono.
+    // Small pre-mix headroom reduces how often the final safety limiter has to act.
+    const directStereoMixGraph = [
+      '[0:a]aresample=48000,aformat=channel_layouts=stereo,volume=0.94[base]',
+      `[1:a]aresample=48000,${micFilter},aformat=channel_layouts=mono,pan=stereo|c0=c0|c1=c0,volume=0.94[mic]`,
+      '[base][mic]amix=inputs=2:duration=longest:dropout_transition=2:normalize=0,alimiter=limit=0.97:level=disabled,aformat=channel_layouts=stereo[a]'
     ].join(';');
-    const fallbackEchoGraph = [
-      // If adaptive cancellation is unavailable, preserve local speech rather than
-      // aggressively ducking the microphone whenever system audio is present. Echo
-      // rejection is best-effort in this rare fallback; recorded mic speech is not.
-      '[0:a]aresample=48000[base]',
-      `[1:a]aresample=48000,${micFilter}[mic]`,
-      '[base][mic]amix=inputs=2:duration=longest:dropout_transition=2:normalize=0,alimiter=limit=0.95[a]'
-    ].join(';');
-    const runBaseAudioMix = async (video) => {
-      const baseArgs = video
-        ? ['-y', '-i', basePath, '-i', micPath, '-filter_complex', adaptiveEchoGraph, '-map', '0:v:0', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', merged]
-        : ['-y', '-i', basePath, '-i', micPath, '-filter_complex', adaptiveEchoGraph, '-map', '[a]', '-c:a', 'aac', '-b:a', '192k', merged];
-      try {
-        await runProcess(executable, baseArgs);
-        return `adaptive-nlms-residual-v6-ffmpeg${ffmpegMajor || 6}-${nlmsResidualMode}`;
-      } catch (error) {
-        activityLog('warn', 'audio.adaptive-echo-guard-fallback', { error, recording: path.basename(basePath) });
-        const fallbackArgs = video
-          ? ['-y', '-i', basePath, '-i', micPath, '-filter_complex', fallbackEchoGraph, '-map', '0:v:0', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', merged]
-          : ['-y', '-i', basePath, '-i', micPath, '-filter_complex', fallbackEchoGraph, '-map', '[a]', '-c:a', 'aac', '-b:a', '192k', merged];
-        await runProcess(executable, fallbackArgs);
-        return 'speech-safe-direct-mic-fallback';
-      }
-    };
-    let echoGuardProfile = 'none';
     if (recordingKind === 'audio') {
       if (hasBaseAudio) {
-        echoGuardProfile = await runBaseAudioMix(false);
+        await runProcess(executable, ['-y', '-i', basePath, '-i', micPath, '-filter_complex', directStereoMixGraph, '-map', '[a]', '-c:a', 'aac', '-b:a', '192k', merged]);
       } else {
-        await runProcess(executable, ['-y', '-i', micPath, '-vn', '-af', micFilter, '-c:a', 'aac', '-b:a', '192k', merged]);
+        await runProcess(executable, ['-y', '-i', micPath, '-vn', '-af', standaloneMicFilter, '-c:a', 'aac', '-b:a', '192k', merged]);
       }
     } else if (hasBaseAudio) {
-      echoGuardProfile = await runBaseAudioMix(true);
+      await runProcess(executable, ['-y', '-i', basePath, '-i', micPath, '-filter_complex', directStereoMixGraph, '-map', '0:v:0', '-map', '[a]', '-c:v', 'copy', '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', merged]);
     } else {
-      await runProcess(executable, ['-y', '-i', basePath, '-i', micPath, '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', '-af', micFilter, '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', merged]);
+      await runProcess(executable, ['-y', '-i', basePath, '-i', micPath, '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', '-af', standaloneMicFilter, '-c:a', 'aac', '-b:a', '192k', '-movflags', '+faststart', merged]);
     }
     if (!fs.existsSync(merged) || fs.statSync(merged).size < 128) throw new Error('Microphone mix did not create a valid output.');
     fs.unlinkSync(basePath);
     fs.renameSync(merged, basePath);
-    activityLog('info', 'audio.microphone-mixed', { outputFile: path.basename(basePath), echoGuard: Boolean(hasBaseAudio), echoGuardProfile, recordingKind });
+    activityLog('info', 'audio.microphone-mixed', {
+      outputFile: path.basename(basePath),
+      echoGuard: false,
+      echoGuardProfile: hasBaseAudio ? 'capture-time-webrtc-only+stereo-direct-mix' : 'capture-time-webrtc-only',
+      recordingKind,
+      outputChannels: hasBaseAudio ? 2 : 1
+    });
     return basePath;
   } finally {
     try { if (fs.existsSync(merged)) fs.unlinkSync(merged); } catch {}
@@ -3517,25 +3474,24 @@ async function mixMicrophoneIntoRecording(basePath, micPath, recordingKind = 'vi
 function fastMicrophoneFilter(noiseMode, neuralMethod = 'none') {
   const mode = normalizeMicNoiseMode(noiseMode);
   const localNeural = /rnnoise/i.test(String(neuralMethod || ''));
-  // v0.2.104: RNNoise is the primary fan/air suppressor for Enhanced/Strong. Keep
-  // the post-filter intentionally light when RNNoise is active so speech is not
-  // hollowed out by a second aggressive denoiser. The fallback remains stronger,
-  // but dynamic normalization was removed because it could pump residual fan/air
-  // noise back up between and underneath words. A small fixed mic-only lift follows
-  // suppression so the user's voice is a little louder without raising system audio.
+  // v0.2.122: Enhanced/Strong already have capture-time RNNoise. Do not denoise,
+  // gate, dynamically normalize, or add the previous 1.58-1.68x gain after Stop.
+  // Retain only light rumble removal; the final mix owns the attenuation-only limiter.
+  if ((mode === 'enhanced' || mode === 'strong') && localNeural) {
+    const cutoff = mode === 'strong' ? 80 : 65;
+    return `highpass=f=${cutoff}:p=2`;
+  }
+  // If the neural sidecar is unavailable, retain a conservative non-neural cleanup
+  // path so Enhanced/Strong still provide useful noise reduction without auto-boost.
   if (mode === 'strong') {
-    return localNeural
-      ? 'highpass=f=95:p=2,equalizer=f=190:t=q:w=0.90:g=-1.8,equalizer=f=430:t=q:w=1.0:g=-1.0,afftdn=nr=4:nf=-52:tn=1:tr=1:ad=0.96:gs=3,agate=threshold=0.0048:ratio=2.0:attack=10:release=300:range=0.10,equalizer=f=2800:t=q:w=0.95:g=1.5,volume=1.680,alimiter=limit=0.96'
-      : 'highpass=f=130:p=2,equalizer=f=210:t=q:w=0.88:g=-5.0,equalizer=f=480:t=q:w=1.0:g=-3.0,afftdn=nr=17:nf=-47:tn=1:tr=1:ad=0.94:gs=6,agate=threshold=0.0068:ratio=2.8:attack=10:release=300:range=0.055,equalizer=f=2800:t=q:w=0.95:g=1.3,volume=1.580,alimiter=limit=0.96';
+    return 'highpass=f=115:p=2,equalizer=f=210:t=q:w=0.90:g=-3.5,equalizer=f=480:t=q:w=1.0:g=-2.0,afftdn=nr=12:nf=-49:tn=1:tr=1:ad=0.96:gs=4,agate=threshold=0.0062:ratio=2.2:attack=12:release=320:range=0.09,equalizer=f=2800:t=q:w=0.95:g=0.8';
   }
   if (mode === 'enhanced') {
-    return localNeural
-      ? 'highpass=f=85:p=2,equalizer=f=175:t=q:w=0.90:g=-1.2,equalizer=f=410:t=q:w=1.0:g=-0.7,afftdn=nr=3:nf=-54:tn=1:tr=1:ad=0.97:gs=2,agate=threshold=0.0042:ratio=1.8:attack=12:release=320:range=0.14,equalizer=f=2800:t=q:w=0.95:g=1.6,volume=1.680,alimiter=limit=0.96'
-      : 'highpass=f=110:p=2,equalizer=f=180:t=q:w=0.88:g=-3.5,equalizer=f=430:t=q:w=1.0:g=-2.0,afftdn=nr=14:nf=-49:tn=1:tr=1:ad=0.95:gs=5,agate=threshold=0.0055:ratio=2.3:attack=12:release=300:range=0.075,equalizer=f=2800:t=q:w=0.95:g=1.5,volume=1.580,alimiter=limit=0.96';
+    return 'highpass=f=95:p=2,equalizer=f=185:t=q:w=0.90:g=-2.5,equalizer=f=430:t=q:w=1.0:g=-1.4,afftdn=nr=9:nf=-51:tn=1:tr=1:ad=0.97:gs=3,agate=threshold=0.0052:ratio=1.9:attack=14:release=320:range=0.13,equalizer=f=2800:t=q:w=0.95:g=0.8';
   }
   return mode === 'standard'
-    ? 'highpass=f=85,dynaudnorm=f=280:g=15:p=0.92:m=3:r=0.08:s=4:t=0.01,agate=threshold=0.005:ratio=1.7:attack=18:release=260:range=0.26,alimiter=limit=0.96'
-    : 'highpass=f=65,alimiter=limit=0.97';
+    ? 'highpass=f=75:p=2,equalizer=f=2700:t=q:w=0.95:g=0.5'
+    : 'highpass=f=65:p=2';
 }
 
 async function renderFastMicrophoneMaster(rawMicPath, neuralMicPath, noiseMode, neuralMethod = 'none') {
@@ -3561,9 +3517,8 @@ async function postProcessAndMixMicrophone(basePath, micPath, recordingKind, noi
   const source = (mode === 'enhanced' || mode === 'strong') && safeNeuralMic ? safeNeuralMic : safeMic;
   const sourceLabel = source === safeNeuralMic ? 'speech-processed-sidecar' : 'microphone-sidecar';
   try {
-    // v0.2.92 keeps normal Stop to one microphone FFmpeg pass. The same fast
-    // mastering filter is applied inline before the call-echo sidechain/mix, instead
-    // of first creating a mastered M4A and then decoding it again for a second pass.
+    // Normal Stop stays one microphone FFmpeg pass. The capture-preserving filter
+    // is applied inline and mixed directly; there is no second offline AEC or gain pass.
     await mixMicrophoneIntoRecording(basePath, source, recordingKind, { micFilter: fastMicrophoneFilter(mode, source === safeNeuralMic ? neuralMethod : 'none'), delayMs: microphoneStartOffsetMs });
     if (deleteSourceOnSuccess) { try { fs.unlinkSync(safeMic); } catch {} }
     activityLog('info', 'audio.microphone-finalized', {
@@ -3576,7 +3531,7 @@ async function postProcessAndMixMicrophone(basePath, micPath, recordingKind, noi
     });
     return {
       applied: true,
-      method: `single-pass-${sourceLabel}+call-echo-guard`,
+      method: `capture-preserved-${sourceLabel}+stereo-direct-mix`,
       vadUsed: false,
       vadRole: 'not-used-during-save',
       windStrength: 0,
@@ -3590,10 +3545,10 @@ async function postProcessAndMixMicrophone(basePath, micPath, recordingKind, noi
     };
   } catch (error) {
     activityLog('warn', 'audio.microphone-fast-finalize-fallback', { error, recording: String(recordingName || path.basename(basePath)) });
-    const fallbackFilter = (mode === 'enhanced' || mode === 'strong') ? fastMicrophoneFilter(mode, 'none') : 'highpass=f=65,alimiter=limit=0.97';
+    const fallbackFilter = (mode === 'enhanced' || mode === 'strong') ? fastMicrophoneFilter(mode, 'none') : 'highpass=f=65:p=2';
     await mixMicrophoneIntoRecording(basePath, safeMic, recordingKind, { micFilter: fallbackFilter, delayMs: microphoneStartOffsetMs });
     if (deleteSourceOnSuccess) { try { fs.unlinkSync(safeMic); } catch {} }
-    return { applied: true, method: 'noise-cleaned-mic-fallback+call-echo-guard', vadUsed: false, vadRole: 'not-used', windStrength: 0, severeWind: false, speechPreservation: null, safetyFallback: true, fallback: true, error: error.message || String(error) };
+    return { applied: true, method: 'noise-cleaned-mic-fallback+stereo-direct-mix', vadUsed: false, vadRole: 'not-used', windStrength: 0, severeWind: false, speechPreservation: null, safetyFallback: true, fallback: true, error: error.message || String(error) };
   }
 }
 
@@ -3636,7 +3591,9 @@ async function recoverOneJournalInternal(journal, manifestPath = null) {
     const recoveredMarkers = normalizeMarkers(journal.meta?.markers || []);
     if (recoveredMarkers.length) saveMarkersForRecording(outputPath, recoveredMarkers);
     const recoveredDurationSeconds = Math.max(0, Number(journal.meta?.elapsedMs || journal.meta?.durationMs || 0) / 1000) || Infinity;
-    const recoveredVoiceHighlights = normalizeVoiceHighlights(journal.meta?.voiceHighlights || [], recoveredDurationSeconds);
+    const recoveredVoiceHighlights = MY_VOICE_HIGHLIGHTS_ENABLED
+      ? normalizeVoiceHighlights(journal.meta?.voiceHighlights || [], recoveredDurationSeconds)
+      : [];
     if (recoveredVoiceHighlights.length) saveVoiceHighlightsForRecording(outputPath, recoveredVoiceHighlights, { durationSeconds: recoveredDurationSeconds, method: 'recovery-checkpoint' });
     // Cancellation is deliberately checked before the destructive cleanup phase. A
     // stopped recovery therefore leaves every protected source/manifest available
@@ -4038,6 +3995,18 @@ const AUTO_INSIGHTS_MODEL = 'onnx-community/Qwen2.5-1.5B-Instruct';
 const automaticDiarizationJobs = new Map();
 const automaticInsightsJobs = new Map();
 
+function analysisReadyRecordingPath(recordingPath) {
+  const safe = safeRecordingPath(recordingPath);
+  const resolved = path.resolve(safe);
+  const name = path.basename(resolved);
+  if (name.startsWith('.') || reservedRecordingOutputPaths.has(resolved)) {
+    const error = new Error('Recording is still finalizing. Analysis will start after the saved file is complete.');
+    error.code = 'RECORDING_FINALIZING';
+    throw error;
+  }
+  return safe;
+}
+
 function secondsToSrtTime(value) {
   const totalMs = Math.max(0, Math.round((Number(value) || 0) * 1000));
   const hours = Math.floor(totalMs / 3600000);
@@ -4060,7 +4029,7 @@ function chunksToSrt(chunks, fallbackText = '') {
 
 
 async function transcribeRecordingAutomatically(recordingPath, force = false) {
-  const safe = safeRecordingPath(recordingPath);
+  const safe = analysisReadyRecordingPath(recordingPath);
   if (!fs.existsSync(safe)) throw new Error('Recording was not found.');
   lastRecordingPath = safe;
   const existing = transcriptPathsForRecording(safe);
@@ -4214,7 +4183,10 @@ async function listRecordings() {
   const dir = recordingsDirectory();
   const categoryMetadata = loadCategoryMetadata();
   const entries = fs.readdirSync(dir, { withFileTypes: true })
-    .filter((entry) => entry.isFile() && /\.(mp4|webm|m4a|mp3)$/i.test(entry.name));
+    .filter((entry) => entry.isFile()
+      && !entry.name.startsWith('.')
+      && /\.(mp4|webm|m4a|mp3)$/i.test(entry.name)
+      && !reservedRecordingOutputPaths.has(path.resolve(path.join(dir, entry.name))));
   const files = await Promise.all(entries.map(async (entry) => {
     const filePath = path.join(dir, entry.name);
     const stat = fs.statSync(filePath);
@@ -4290,8 +4262,9 @@ function searchRecordingLibrary(query) {
   const categories = loadCategoryMetadata();
   const results = [];
   for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (!entry.isFile() || !/\.(mp4|webm|m4a|mp3)$/i.test(entry.name)) continue;
+    if (!entry.isFile() || entry.name.startsWith('.') || !/\.(mp4|webm|m4a|mp3)$/i.test(entry.name)) continue;
     const filePath = path.join(dir, entry.name);
+    if (reservedRecordingOutputPaths.has(path.resolve(filePath))) continue;
     const category = categoryForRecording(filePath, categories);
     const transcripts = transcriptPathsForRecording(filePath);
     let transcript = '';
@@ -5045,6 +5018,9 @@ ipcMain.handle('models:remove', (_event, modelId) => localModelManager.remove(St
 ipcMain.handle('models:open-folder', () => { const dir = localModelManager.cacheDir(); fs.mkdirSync(dir, { recursive: true }); shell.openPath(dir); return dir; });
 ipcMain.handle('update:status', () => updateManager?.snapshot?.() || { state: 'unavailable', configured: false });
 ipcMain.handle('update:check', () => updateManager?.check?.(true) || { state: 'unavailable' });
+ipcMain.handle('update:download', () => updateManager?.download?.() || { state: 'unavailable', configured: false });
+ipcMain.handle('update:remind-later', () => updateManager?.remindLater?.() || { ok: false, reason: 'Updater is unavailable.' });
+ipcMain.handle('update:skip-version', () => updateManager?.skipVersion?.() || { ok: false, reason: 'Updater is unavailable.' });
 ipcMain.handle('update:install', () => { getRecoveryJournalManager().flush(); return updateManager?.install?.() || { ok: false, reason: 'Updater is unavailable.' }; });
 ipcMain.handle('analytics:status', () => analyticsManager?.snapshot?.() || { configured: false, enabled: false, provider: 'none' });
 ipcMain.handle('analytics:set-enabled', (_event, enabled) => analyticsManager?.setEnabled?.(Boolean(enabled)) || { configured: false, enabled: false, provider: 'none' });
@@ -5167,7 +5143,7 @@ ipcMain.handle('recording:checkpoint', (_event, payload = {}) => {
   const dynamicMeta = {
     elapsedMs,
     markers: normalizeMarkers(payload.markers || activeRecordingMeta.markers || []),
-    voiceHighlights: normalizeVoiceHighlights(payload.voiceHighlights || activeRecordingMeta.voiceHighlights || [], durationSeconds),
+    ...(MY_VOICE_HIGHLIGHTS_ENABLED ? { voiceHighlights: normalizeVoiceHighlights(payload.voiceHighlights || activeRecordingMeta.voiceHighlights || [], durationSeconds) } : {}),
     sourceName: String(payload.sourceName || activeRecordingMeta.sourceName || '').slice(0, 300),
     sourceId: String(payload.sourceId || activeRecordingMeta.sourceId || '').slice(0, 300),
     sourceDisplayId: String(payload.sourceDisplayId || activeRecordingMeta.sourceDisplayId || '').slice(0, 120),
@@ -5347,7 +5323,7 @@ ipcMain.handle('recording:finalize-sealed', async (_event, sessionId) => {
     throw error;
   } finally {
     if (!activeTempPath && !activeWriteStream && sealedRecordingSessions.size === 0) setRecordingResourcePriority(false, 'recording-save-finished');
-    if (completedResult?.path && loadVoiceProfile()?.embedding?.length) setTimeout(() => refineVoiceHighlightsWithEnrollment(completedResult.path), 0);
+    if (MY_VOICE_HIGHLIGHTS_ENABLED && completedResult?.path && loadVoiceProfile()?.embedding?.length) setTimeout(() => refineVoiceHighlightsWithEnrollment(completedResult.path), 0);
   }
 });
 

@@ -169,11 +169,6 @@
                 <span>System</span><span class="compact-meter-track"><i id="compactSystemActivity"></i></span><small id="compactSystemActivityLabel">Off</small>
               </div>
             </div>
-            <div class="compact-voice-highlights hidden" id="compactVoiceHighlights" aria-label="My voice highlights during recording">
-              <span class="compact-voice-label"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.8a3 3 0 0 0-3 3v5.1a3 3 0 0 0 6 0V6.8a3 3 0 0 0-3-3Z"/><path d="M6.8 11.4a5.2 5.2 0 0 0 10.4 0M12 16.6v3.2"/></svg><span>My voice</span></span>
-              <span class="voice-highlight-live-track" id="compactVoiceHighlightTrack" aria-hidden="true"></span>
-              <small id="compactVoiceHighlightCount">Live</small>
-            </div>
             <div class="compact-ai-mini hidden" id="compactAiMiniStatus" aria-live="polite">
               <span class="compact-ai-dot" aria-hidden="true"></span>
               <span class="compact-ai-label" id="compactAiMiniLabel">Processing previous recording</span>
@@ -277,7 +272,6 @@
                     <span id="playbackCurrentTime" class="player-time">00:00:00</span>
                     <div class="waveform-timeline" id="waveformTimeline">
                       <canvas id="playbackWaveform" class="waveform-canvas" aria-hidden="true"></canvas>
-                      <div id="playbackVoiceHighlightLayer" class="timeline-my-voice-layer hidden" aria-label="My voice highlighted sections"></div>
                       <div id="playbackMarkerLayer" class="timeline-marker-layer" aria-label="Playback bookmark markers"></div>
                       <div id="bookmarkInlineEditor" class="bookmark-inline-editor hidden" role="dialog" aria-label="Bookmark marker text">
                         <input id="bookmarkInlineInput" type="text" maxlength="48" placeholder="Marker text" autocomplete="off" aria-label="Bookmark marker text" />
@@ -320,7 +314,6 @@
                           <button type="button" data-seek="30" role="menuitem">+30s</button>
                         </div>
                       </div>
-                      <button class="player-icon-button voice-highlight-toggle" id="toggleVoiceHighlights" type="button" disabled aria-pressed="false" title="My voice highlights unavailable" aria-label="My voice highlights unavailable"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.8a3 3 0 0 0-3 3v5.1a3 3 0 0 0 6 0V6.8a3 3 0 0 0-3-3Z"/><path d="M6.8 11.4a5.2 5.2 0 0 0 10.4 0M12 16.6v3.2"/></svg><span class="voice-highlight-button-count"></span></button>
                       <button class="player-icon-button player-snapshot-button" id="snapshotPlayback" type="button" title="Save snapshot of current frame" aria-label="Save snapshot of current frame"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 7.5h3l1.4-2h7.2l1.4 2h3a2 2 0 0 1 2 2v8.5a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9.5a2 2 0 0 1 2-2z"/><circle cx="12" cy="13.5" r="4"/></svg></button>
                       <button class="player-caption-button cc-unavailable" id="playerSubtitleControl" type="button" disabled aria-pressed="false" title="Captions unavailable for this recording" aria-label="Captions unavailable for this recording"><span class="cc-player-icon" aria-hidden="true">CC</span></button>
                     </div>
@@ -632,13 +625,6 @@
             <button class="button secondary hidden" id="pausePrimaryButton" type="button" aria-keyshortcuts="Control+Alt+P Meta+Alt+P">Pause</button>
             <button class="button secondary hidden" id="bookmarkPrimaryButton" type="button" aria-keyshortcuts="Control+Alt+B Meta+Alt+B" title="Add bookmark (⌘/Ctrl+Alt+B)">◆ Bookmark</button>
           </div>
-          <div class="recording-voice-highlights hidden" id="recordingVoiceHighlights" aria-label="My voice highlights during recording">
-            <div class="recording-voice-highlight-heading">
-              <span class="recording-voice-highlight-title"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.8a3 3 0 0 0-3 3v5.1a3 3 0 0 0 6 0V6.8a3 3 0 0 0-3-3Z"/><path d="M6.8 11.4a5.2 5.2 0 0 0 10.4 0M12 16.6v3.2"/></svg><strong>My voice</strong><span>Read-only detection — recording audio is unchanged</span></span>
-              <small id="recordingVoiceHighlightCount">Listening</small>
-            </div>
-            <div class="voice-highlight-live-track full" id="recordingVoiceHighlightTrack" aria-hidden="true"></div>
-          </div>
           <div class="recording-active-ai-status-slot" id="recordingActiveAiStatusSlot" aria-label="Background processing from previous recordings"></div>
           <div class="recovery-notice hidden" id="recoveryNotice" role="status" aria-live="polite">
             <span class="recovery-notice-icon" aria-hidden="true">↻</span>
@@ -833,15 +819,6 @@
               <p class="helper analytics-helper">Never sends recordings, microphone audio, transcripts, filenames, bookmark text, screen contents, names, email addresses, or exact location. Country-level analytics may be derived by the analytics service from the network request.</p>
             </div>
             </div>
-            <div class="voice-enrollment-card" id="voiceEnrollmentCard">
-              <div class="voice-enrollment-copy"><strong>My Voice profile</strong><span id="voiceEnrollmentStatus">Optional · improves My Voice and speaker matching without changing recorded audio.</span></div>
-              <div class="voice-enrollment-actions">
-                <button class="button secondary small" id="voiceEnrollButton" type="button">Enroll my voice…</button>
-                <button class="button secondary small hidden" id="voiceClearButton" type="button">Remove profile</button>
-              </div>
-              <div class="voice-enrollment-progress hidden" id="voiceEnrollmentProgress" aria-live="polite"><span><i id="voiceEnrollmentProgressFill"></i></span><strong id="voiceEnrollmentCountdown">15s</strong></div>
-              <p class="helper">Speak naturally for about 15 seconds. Only a local voice signature is kept; the enrollment audio is deleted after processing.</p>
-            </div>
             <div class="app-tools-actions">
               <button class="button secondary small" id="openModelManager" type="button">Manage AI Models…</button>
               <button class="button secondary small" id="openDiagnostics" type="button">App Diagnostics…</button>
@@ -970,7 +947,7 @@
         <button class="button primary" id="exportDiagnostics" type="button">Export Diagnostics ZIP</button>
       </section>
       <div class="diagnostics-checklist" aria-label="App health checks">
-        <div><span>App version</span><strong id="aboutVersion">0.2.120</strong></div>
+        <div><span>App version</span><strong id="aboutVersion">0.2.124</strong></div>
         <div><span>Screen access</span><strong id="diagnosticScreenPermission">Checking…</strong></div>
         <div><span>Microphone</span><strong id="diagnosticMicPermission">Checking…</strong></div>
         <div><span>Camera</span><strong id="diagnosticCameraPermission">Checking…</strong></div>
@@ -998,9 +975,33 @@
         <button class="button secondary small" id="checkUpdates" type="button">Check for updates</button>
         <button class="button primary small hidden" id="installUpdate" type="button">Restart and update</button>
       </div>
-      <p class="helper">Updates never interrupt recording, recovery, or local AI processing. If an update is ready, you decide when to restart.</p>
+      <p class="helper">PulseStudio checks GitHub Releases automatically. Update prompts wait until recording, recovery, and local AI work are idle, and you can still check manually here.</p>
     </div>
     <div class="modal-footer"><button class="button secondary" data-close-dialog="aboutDialog" type="button">Close</button></div>
+  </dialog>
+
+  <dialog id="updateAvailableDialog" class="modal update-available-modal" aria-labelledby="updateAvailableDialogTitle" aria-describedby="updateAvailableStatus">
+    <div class="modal-header update-available-header">
+      <div><span class="update-available-kicker">PULSESTUDIO UPDATE</span><h2 id="updateAvailableDialogTitle">A new version is available</h2></div>
+      <span class="update-version-badge" id="updateAvailableVersion">New version</span>
+    </div>
+    <div class="modal-body update-available-body">
+      <p class="update-available-status" id="updateAvailableStatus">A newer PulseStudio build is available from GitHub Releases.</p>
+      <section class="update-release-card" aria-label="Release notes">
+        <strong>What’s new</strong>
+        <div id="updateReleaseNotes" class="update-release-notes">Loading release notes…</div>
+      </section>
+      <div id="updateProgressWrap" class="update-progress-wrap hidden">
+        <progress id="updateProgressBar" max="100" value="0"></progress>
+        <span id="updateProgressText">Downloading · 0%</span>
+      </div>
+      <p class="update-portable-note">PulseStudio updates this portable installation directly from the official GitHub Release ZIP. Your recordings, settings, local AI models, and diagnostic logs stay in place.</p>
+    </div>
+    <div class="modal-footer update-available-actions">
+      <button class="button secondary" id="updateSkipVersion" type="button">Skip This Version</button>
+      <button class="button secondary" id="updateRemindLater" type="button">Remind Me Later</button>
+      <button class="button primary" id="updatePrimaryAction" type="button">Update Now</button>
+    </div>
   </dialog>
 
   <dialog id="modelManagerDialog" class="modal model-manager-modal" aria-labelledby="modelManagerDialogTitle">

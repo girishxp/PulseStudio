@@ -1,5 +1,9 @@
 const $ = (id) => document.getElementById(id);
 
+// v0.2.123 diagnostic isolation: disable My Voice highlighting end-to-end.
+// This deliberately leaves speaker diarization/transcription unchanged.
+const MY_VOICE_HIGHLIGHTS_ENABLED = false;
+
 const FAST_TOOLTIP_DELAY_MS = 120;
 const FAST_TOOLTIP_MINI_MODE_DELAY_MS = 90;
 const fastTooltipState = {
@@ -394,6 +398,7 @@ const state = {
   playbackToolbarObserver: null,
   latestUpdateStatus: null,
   unsubscribeUpdateStatus: null,
+  updateDialogRetryTimer: null,
   lastDiagnostics: null,
   compactFeedbackTimer: null,
   compactFitFrame: 0,
@@ -652,14 +657,14 @@ function stopRecordingHealthMonitor() {
 async function checkpointActiveRecording(reason = 'interval') {
   if (!state.startedAt || !state.activeRecordingMeta || !window.recorderAPI.checkpointRecording) return;
   const durationSeconds = Math.max(0.2, elapsedMs() / 1000);
-  const voiceHighlights = normalizeLiveVoiceHighlights(durationSeconds);
+  const voiceHighlights = MY_VOICE_HIGHLIGHTS_ENABLED ? normalizeLiveVoiceHighlights(durationSeconds) : [];
   const visibleAi = currentVisibleAiJob();
   try {
     await window.recorderAPI.checkpointRecording({
       reason,
       elapsedMs: elapsedMs(),
       markers: [...state.pendingMarkers],
-      voiceHighlights,
+      ...(MY_VOICE_HIGHLIGHTS_ENABLED ? { voiceHighlights } : {}),
       sourceName: state.activeRecordingMeta.sourceName || '',
       sourceId: state.activeRecordingMeta.sourceId || '',
       sourceDisplayId: state.activeRecordingMeta.sourceDisplayId || '',
@@ -1253,10 +1258,11 @@ async function startRecordingMicrophoneOnDemand(source = 'mini-controller') {
     state.neuralMicRecorder = createNeuralMicrophoneRecorder(state.processedMicStream);
     state.micRecorder?.start(2000);
     state.neuralMicRecorder?.start(2000);
-    // My Voice uses an observation-only analyser. This node has no destination and
-    // cannot change the recorded microphone stream, gain, denoising, or mix.
-    attachReadOnlyVoiceHighlightMicAnalyser();
-    startLiveVoiceHighlightAnalysis();
+    // My Voice highlighting is disabled in v0.2.123 for audio-path isolation.
+    if (MY_VOICE_HIGHLIGHTS_ENABLED) {
+      attachReadOnlyVoiceHighlightMicAnalyser();
+      startLiveVoiceHighlightAnalysis();
+    }
     if (state.mediaRecorder.state === 'paused') {
       try { if (state.micRecorder?.state === 'recording') state.micRecorder.pause(); } catch {}
       try { if (state.neuralMicRecorder?.state === 'recording') state.neuralMicRecorder.pause(); } catch {}
@@ -2407,7 +2413,9 @@ async function loadPlaybackEnhancements(recordingPath, selectionToken) {
   const [waveform, markers, voiceHighlights] = await Promise.all([
     window.recorderAPI.getRecordingWaveform(recordingPath, 1400).catch(() => ({ samples: [], hasAudio: false })),
     window.recorderAPI.getRecordingMarkers(recordingPath).catch(() => []),
-    (window.recorderAPI.getRecordingVoiceHighlights?.(recordingPath) || Promise.resolve([])).catch(() => [])
+    MY_VOICE_HIGHLIGHTS_ENABLED
+      ? (window.recorderAPI.getRecordingVoiceHighlights?.(recordingPath) || Promise.resolve([])).catch(() => [])
+      : Promise.resolve([])
   ]);
   if (selectionToken !== state.playbackSelectionToken || state.selectedPlaybackPath !== recordingPath) return;
   state.waveformSamples = waveform.samples || [];
@@ -6371,11 +6379,13 @@ async function startRecording() {
       captureTracks: captures.flatMap((capture) => capture.stream?.getTracks?.() || []).map((track) => ({ kind: track.kind, settings: track.getSettings?.() || {} }))
     });
     state.pendingMarkers = [];
-    resetLiveVoiceHighlightAnalysis();
-    // Normal recording start must reattach the dedicated read-only mic observer after
-    // reset. v0.2.98 reset this node and then accidentally fell back to the general
-    // meter analyser, which could be silent on macOS even though the raw mic recorded.
-    attachReadOnlyVoiceHighlightMicAnalyser();
+    if (MY_VOICE_HIGHLIGHTS_ENABLED) {
+      resetLiveVoiceHighlightAnalysis();
+      attachReadOnlyVoiceHighlightMicAnalyser();
+    } else {
+      state.liveVoiceHighlights = [];
+      state.liveVoiceHighlightActive = null;
+    }
     state.startedAt = Date.now();
     state.totalPausedMs = 0;
     state.pauseStartedAt = 0;
@@ -6395,7 +6405,7 @@ async function startRecording() {
     $('resultPanel').classList.add('hidden');
     $('transcriptPanel').classList.add('hidden');
     startMeter();
-    startLiveVoiceHighlightAnalysis();
+    if (MY_VOICE_HIGHLIGHTS_ENABLED) startLiveVoiceHighlightAnalysis();
     const audioLabel = audioMode === 'application' ? 'selected-application audio' : audioMode === 'system' ? 'system audio' : 'microphone/audio';
     setStatus(audioOnly
       ? `Recording audio only with ${audioLabel}. M4A saves automatically when stopped.`
@@ -6476,8 +6486,8 @@ async function stopRecording(options = {}) {
   await checkpointActiveRecording('recording-stop').catch(() => {});
   stopRecordingCheckpointTimer();
   stopRecordingHealthMonitor();
-  stopLiveVoiceHighlightAnalysis(true);
-  const voiceHighlights = normalizeLiveVoiceHighlights(Math.max(0, durationMs / 1000));
+  if (MY_VOICE_HIGHLIGHTS_ENABLED) stopLiveVoiceHighlightAnalysis(true);
+  const voiceHighlights = MY_VOICE_HIGHLIGHTS_ENABLED ? normalizeLiveVoiceHighlights(Math.max(0, durationMs / 1000)) : [];
   window.recorderAPI.logEvent?.(automaticReason ? 'warn' : 'info', 'renderer.recording-stop-requested', {
     durationMs,
     automatic: Boolean(automaticReason),
@@ -6539,8 +6549,7 @@ async function stopRecording(options = {}) {
       writeInterruptionReason: recordingWriteError ? friendlyErrorText(recordingWriteError) : '',
       automaticStopReason: automaticReason,
       markers,
-      voiceHighlights,
-      voiceHighlightMethod: 'mic-system-readonly'
+      ...(MY_VOICE_HIGHLIGHTS_ENABLED ? { voiceHighlights, voiceHighlightMethod: 'mic-system-readonly' } : {})
     };
 
     const sealed = await window.recorderAPI.sealRecording(finalizeMeta);
@@ -7014,16 +7023,84 @@ async function refreshModelManager() {
   } catch (error) { list.innerHTML = `<div class="empty">Could not load local AI models. ${escapeHtml(friendlyErrorText(error))}</div>`; }
 }
 
+function scheduleUpdateDialogOpen() {
+  if (state.updateDialogRetryTimer) clearTimeout(state.updateDialogRetryTimer);
+  state.updateDialogRetryTimer = null;
+  const dialog = $('updateAvailableDialog');
+  if (!dialog || dialog.open) return;
+  const tryOpen = () => {
+    state.updateDialogRetryTimer = null;
+    const value = state.latestUpdateStatus || {};
+    const shouldOpen = value.state === 'available' || value.state === 'downloading' || value.state === 'ready' || value.state === 'installing' || (value.state === 'error' && Boolean(value.availableVersion));
+    if (!shouldOpen || dialog.open) return;
+    const anotherDialogOpen = Array.from(document.querySelectorAll('dialog[open]')).some((node) => node !== dialog);
+    if (anotherDialogOpen) {
+      state.updateDialogRetryTimer = setTimeout(tryOpen, 900);
+      return;
+    }
+    try { dialog.showModal(); } catch {}
+  };
+  tryOpen();
+}
+
+function renderUpdateDialog(value = {}) {
+  const dialog = $('updateAvailableDialog');
+  if (!dialog) return;
+  const active = value.state === 'available' || value.state === 'downloading' || value.state === 'ready' || value.state === 'installing' || (value.state === 'error' && Boolean(value.availableVersion));
+  if (!active) {
+    if (state.updateDialogRetryTimer) clearTimeout(state.updateDialogRetryTimer);
+    state.updateDialogRetryTimer = null;
+    if (dialog.open) dialog.close();
+    return;
+  }
+
+  const version = value.availableVersion ? `v${value.availableVersion}` : 'New version';
+  if ($('updateAvailableVersion')) $('updateAvailableVersion').textContent = version;
+  if ($('updateReleaseNotes')) $('updateReleaseNotes').textContent = value.releaseNotes || 'No release notes were provided for this build.';
+  if ($('updateAvailableStatus')) $('updateAvailableStatus').textContent = value.message || `PulseStudio ${version} is available.`;
+
+  const progressWrap = $('updateProgressWrap');
+  const progressBar = $('updateProgressBar');
+  const progressText = $('updateProgressText');
+  const showProgress = value.state === 'downloading' || value.state === 'ready';
+  progressWrap?.classList.toggle('hidden', !showProgress);
+  if (progressBar) progressBar.value = Math.max(0, Math.min(100, Math.round(Number(value.progress || 0) * 100)));
+  if (progressText) progressText.textContent = value.state === 'ready' ? 'Download verified · ready to install' : `Downloading · ${Math.round(Number(value.progress || 0) * 100)}%`;
+
+  const primary = $('updatePrimaryAction');
+  const later = $('updateRemindLater');
+  const skip = $('updateSkipVersion');
+  const choosing = value.state === 'available' || (value.state === 'error' && value.canDownload);
+  later?.classList.toggle('hidden', !choosing);
+  skip?.classList.toggle('hidden', !choosing);
+  if (primary) {
+    primary.disabled = value.state === 'downloading' || value.state === 'installing' || (value.state === 'error' && !value.canDownload);
+    primary.textContent = value.state === 'downloading'
+      ? 'Downloading…'
+      : value.state === 'ready'
+        ? 'Restart & Install'
+        : value.state === 'installing'
+          ? 'Installing…'
+          : value.state === 'error'
+            ? 'Retry Update'
+            : 'Update Now';
+  }
+  scheduleUpdateDialogOpen();
+}
+
 function updateUpdateUi(status) {
   state.latestUpdateStatus = status || state.latestUpdateStatus || {};
   const value = state.latestUpdateStatus;
   const labels = {
     development: 'Installed app only', unconfigured: 'Not configured', unavailable: 'Unavailable', idle: 'Automatic checks enabled',
-    checking: 'Checking…', current: 'Up to date', downloading: value.progress != null ? `Downloading quietly · ${Math.round(value.progress * 100)}%` : 'Downloading quietly…',
-    deferred: 'Waiting until the app is idle', ready: `Update ready${value.availableVersion ? ` · v${value.availableVersion}` : ''}`, installing: 'Installing and restarting…', error: 'Could not check'
+    checking: 'Checking…', current: 'Up to date', available: `Update available${value.availableVersion ? ` · v${value.availableVersion}` : ''}`,
+    downloading: value.progress != null ? `Downloading · ${Math.round(value.progress * 100)}%` : 'Downloading…',
+    deferred: 'Waiting until the app is idle', reminded: 'Reminder postponed', skipped: `Skipped${value.availableVersion ? ` · v${value.availableVersion}` : ''}`,
+    ready: `Update ready${value.availableVersion ? ` · v${value.availableVersion}` : ''}`, installing: 'Installing and restarting…', error: 'Update issue'
   };
   if ($('diagnosticUpdate')) { $('diagnosticUpdate').textContent = labels[value.state] || value.message || 'Unknown'; $('diagnosticUpdate').title = value.message || ''; }
   $('installUpdate')?.classList.toggle('hidden', value.state !== 'ready');
+  renderUpdateDialog(value);
 }
 
 function updateAnalyticsUi(status) {
@@ -7151,7 +7228,7 @@ async function refreshDiagnostics() {
   try {
     const d = await window.recorderAPI.getDiagnostics();
     state.lastDiagnostics = d;
-    $('aboutVersion').textContent = d.version || state.platformInfo?.version || '0.2.120';
+    $('aboutVersion').textContent = d.version || state.platformInfo?.version || '0.2.124';
     $('diagnosticBuild').textContent = d.packaged ? 'Installed / packaged' : 'Development build';
     $('diagnosticPlatform').textContent = `${d.platform} · ${d.arch} · ${d.release}`;
     const encoding = d.videoEncoding || {};
@@ -7339,7 +7416,7 @@ async function init() {
   state.platformInfo = info;
   applyStartupRecoveryState({ inProgress: Boolean(info.startupRecoveryInProgress) });
   document.documentElement.dataset.platform = info.platform;
-  $('aboutVersion').textContent = info.version || '0.2.120';
+  $('aboutVersion').textContent = info.version || '0.2.124';
   renderWindowCapturePrivacy(await window.recorderAPI.getWindowCapturePrivacy?.().catch(() => ({ enabled: true, supported: info.platform === 'darwin' || info.platform === 'win32' })) || { enabled: true, supported: true });
   const applicationAudioOption = $('computerAudioMode')?.querySelector('option[value="application"]');
   if (applicationAudioOption && !info.applicationAudioSupported) applicationAudioOption.disabled = true;
@@ -7366,13 +7443,14 @@ async function init() {
   updateRecordingSizeEstimate();
 
   state.unsubscribeAiStatus = window.recorderAPI.onAiStatus(handleAiStatus);
-  state.unsubscribeVoiceHighlightsUpdated = window.recorderAPI.onRecordingVoiceHighlightsUpdated?.((payload) => {
-    if (!payload?.path || payload.path !== state.selectedPlaybackPath) return;
-    state.playbackVoiceHighlights = Array.isArray(payload.segments) ? payload.segments : [];
-    renderPlaybackMarkers();
-    renderPlaybackChapterSidebar();
-    if ($('playerStatus')) $('playerStatus').textContent = 'My Voice highlights refined with your local voice profile.';
-  });
+  state.unsubscribeVoiceHighlightsUpdated = MY_VOICE_HIGHLIGHTS_ENABLED
+    ? window.recorderAPI.onRecordingVoiceHighlightsUpdated?.((payload) => {
+        if (!payload?.path || payload.path !== state.selectedPlaybackPath) return;
+        state.playbackVoiceHighlights = Array.isArray(payload.segments) ? payload.segments : [];
+        renderPlaybackMarkers();
+        renderPlaybackChapterSidebar();
+      })
+    : null;
   state.unsubscribeUpdateStatus = window.recorderAPI.onUpdateStatus(updateUpdateUi);
   updateUpdateUi(await window.recorderAPI.getUpdateStatus().catch(() => ({ state: 'unavailable' })));
   state.unsubscribeAnalyticsStatus = window.recorderAPI.onAnalyticsStatus?.(updateAnalyticsUi);
@@ -7413,7 +7491,7 @@ async function init() {
   await initializeCaptureSources();
   await refreshRecordings();
   await loadAudioDevices(false);
-  await refreshVoiceEnrollmentStatus();
+  if (MY_VOICE_HIGHLIGHTS_ENABLED) await refreshVoiceEnrollmentStatus();
   await loadCameraDevices(false);
   await consumeStartupRecoveryNotice();
   await updateReadiness();
@@ -7483,8 +7561,8 @@ async function init() {
   $('settingsCollapseButton').addEventListener('click', () => applySettingsCollapsed(!state.settingsCollapsed));
   $('recordAdvancedToggle')?.addEventListener('click', () => applyRecordAdvancedCollapsed(!state.recordAdvancedCollapsed));
   $('appToolsToggle')?.addEventListener('click', () => applyAppToolsCollapsed(!state.appToolsCollapsed));
-  $('voiceEnrollButton')?.addEventListener('click', enrollMyVoice);
-  $('voiceClearButton')?.addEventListener('click', clearMyVoiceProfile);
+  if (MY_VOICE_HIGHLIGHTS_ENABLED) $('voiceEnrollButton')?.addEventListener('click', enrollMyVoice);
+  if (MY_VOICE_HIGHLIGHTS_ENABLED) $('voiceClearButton')?.addEventListener('click', clearMyVoiceProfile);
   $('windowCapturePrivacyToggle')?.addEventListener('click', () => setWindowCapturePrivacy(!state.windowCapturePrivacyEnabled));
   $('transparencyButton').addEventListener('click', async () => {
     const levels = [0, 10, 20, 30, 50];
@@ -7664,6 +7742,46 @@ async function init() {
   });
   $('checkUpdates')?.addEventListener('click', async () => { $('diagnosticUpdate').textContent = 'Checking…'; const result = await window.recorderAPI.checkForUpdates().catch((error) => ({ state: 'error', message: friendlyErrorText(error) })); updateUpdateUi(result); });
   $('installUpdate')?.addEventListener('click', async () => { const result = await window.recorderAPI.installUpdate(); if (!result?.ok) showToast(result?.reason || 'The update will wait until PulseStudio is idle.', 'warning', 4200); });
+  $('updatePrimaryAction')?.addEventListener('click', async () => {
+    const current = state.latestUpdateStatus || {};
+    try {
+      if (current.state === 'ready') {
+        const install = await window.recorderAPI.installUpdate();
+        if (!install?.ok) showToast(install?.reason || 'Finish the current activity before restarting.', 'warning', 4200);
+        return;
+      }
+      const downloaded = await window.recorderAPI.downloadUpdate();
+      updateUpdateUi(downloaded);
+      if (downloaded?.state === 'ready') {
+        const install = await window.recorderAPI.installUpdate();
+        if (!install?.ok) showToast(install?.reason || 'Finish the current activity before restarting.', 'warning', 4200);
+      } else if (downloaded?.state === 'error') {
+        showToast(downloaded.message || 'The update could not be downloaded.', 'error', 4800);
+      }
+    } catch (error) {
+      showToast(`The update could not continue. ${friendlyErrorText(error)}`, 'error', 4800);
+    }
+  });
+  $('updateRemindLater')?.addEventListener('click', async () => {
+    const result = await window.recorderAPI.remindUpdateLater().catch((error) => ({ ok: false, reason: friendlyErrorText(error) }));
+    if (!result?.ok) return showToast(result?.reason || 'Could not postpone the update reminder.', 'warning', 4200);
+    updateUpdateUi(result.status);
+    showToast('Update reminder postponed');
+  });
+  $('updateSkipVersion')?.addEventListener('click', async () => {
+    const result = await window.recorderAPI.skipUpdateVersion().catch((error) => ({ ok: false, reason: friendlyErrorText(error) }));
+    if (!result?.ok) return showToast(result?.reason || 'Could not skip this version.', 'warning', 4200);
+    updateUpdateUi(result.status);
+    showToast(`Skipped PulseStudio v${result.status?.availableVersion || ''}`.trim());
+  });
+  $('updateAvailableDialog')?.addEventListener('cancel', (event) => {
+    const current = state.latestUpdateStatus || {};
+    if (current.state === 'downloading' || current.state === 'installing') { event.preventDefault(); return; }
+    if (current.state === 'available' || (current.state === 'error' && current.canDownload)) {
+      event.preventDefault();
+      $('updateRemindLater')?.click();
+    }
+  });
   document.querySelectorAll('[data-close-dialog]').forEach((button) => {
     button.addEventListener('click', () => $(button.dataset.closeDialog)?.close());
   });
@@ -7793,7 +7911,7 @@ async function init() {
   $('waveformTimeline')?.addEventListener('pointerdown', seekWaveformFromPointer);
   $('waveformTimeline')?.addEventListener('pointerleave', hideTimelineHoverPreview);
   $('waveformTimeline')?.addEventListener('pointercancel', hideTimelineHoverPreview);
-  $('toggleVoiceHighlights')?.addEventListener('click', () => {
+  if (MY_VOICE_HIGHLIGHTS_ENABLED) $('toggleVoiceHighlights')?.addEventListener('click', () => {
     if (!state.playbackVoiceHighlights.length) return;
     state.voiceHighlightsVisible = !state.voiceHighlightsVisible;
     localStorage.setItem('voiceHighlightsVisible', state.voiceHighlightsVisible ? '1' : '0');

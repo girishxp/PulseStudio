@@ -1,6 +1,5 @@
 const fs = require('fs');
 const path = require('path');
-const os = require('os');
 const crypto = require('crypto');
 const https = require('https');
 const http = require('http');
@@ -8,6 +7,18 @@ const { spawn } = require('child_process');
 
 function readJson(file, fallback = {}) {
   try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fallback; }
+}
+function writeJson(file, value) {
+  try {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    const temporary = `${file}.tmp-${process.pid}-${Date.now()}`;
+    fs.writeFileSync(temporary, `${JSON.stringify(value, null, 2)}\n`, 'utf8');
+    try { fs.rmSync(file, { force: true }); } catch {}
+    fs.renameSync(temporary, file);
+    return true;
+  } catch {
+    return false;
+  }
 }
 function normalizeVersion(value) {
   return String(value || '').trim().replace(/^v/i, '').split('-')[0];
@@ -108,7 +119,9 @@ class RecoveryAwareUpdateManager {
     this.lastAutoCheck = 0;
     this.pendingRelease = null;
     this.downloadPath = '';
-    this.state = { state: 'idle', configured: false, availableVersion: '', progress: null, message: '' };
+    this.preferencesPath = '';
+    this.preferences = { skippedVersion: '', remindVersion: '', remindAfter: 0 };
+    this.state = { state: 'idle', configured: false, availableVersion: '', progress: null, message: '', canDownload: false };
   }
   emit(patch = {}) {
     this.state = { ...this.state, ...patch, checkedAt: Date.now() };
@@ -127,12 +140,42 @@ class RecoveryAwareUpdateManager {
       repo: String(process.env.PULSESTUDIO_UPDATE_REPO || config.repo || '').trim()
     };
   }
+  savePreferences() {
+    if (this.preferencesPath) writeJson(this.preferencesPath, this.preferences);
+  }
+  clearSuppressionForVersion(version) {
+    let changed = false;
+    if (this.preferences.skippedVersion === version) { this.preferences.skippedVersion = ''; changed = true; }
+    if (this.preferences.remindVersion === version || Number(this.preferences.remindAfter || 0) > 0) {
+      this.preferences.remindVersion = '';
+      this.preferences.remindAfter = 0;
+      changed = true;
+    }
+    if (changed) this.savePreferences();
+  }
+  releasePatch(version, release) {
+    return {
+      configured: true,
+      availableVersion: version,
+      releaseNotes: String(release?.body || '').trim().slice(0, 6000),
+      releasePublishedAt: String(release?.published_at || ''),
+      releaseUrl: String(release?.html_url || ''),
+      progress: null
+    };
+  }
   init() {
     this.config = this.readConfig();
+    this.preferencesPath = path.join(this.app.getPath('userData'), 'update-preferences.json');
+    this.preferences = {
+      skippedVersion: '',
+      remindVersion: '',
+      remindAfter: 0,
+      ...readJson(this.preferencesPath, {})
+    };
     if (String(this.config.provider || '') !== 'github-portable' || !this.config.owner || !this.config.repo) {
       return this.emit({ state: 'unconfigured', configured: false, message: 'Automatic updates are not configured for this build.' });
     }
-    this.emit({ state: 'idle', configured: true, message: 'Automatic update checks are enabled.' });
+    this.emit({ state: 'idle', configured: true, message: 'Automatic GitHub Release checks are enabled.', canDownload: false });
     setTimeout(() => this.check(false), 15000).unref?.();
     const intervalHours = Math.max(1, Number(this.config.checkIntervalHours || 6));
     this.timer = setInterval(() => {
@@ -146,8 +189,8 @@ class RecoveryAwareUpdateManager {
     if (!this.state.configured) return this.snapshot();
     this.lastAutoCheck = Date.now();
     const safe = this.isSafe();
-    if (!safe.safe) return this.emit({ state: 'deferred', message: `Update check will wait until ${safe.reason}.` });
-    this.emit({ state: 'checking', configured: true, message: 'Checking GitHub for updates…', progress: null });
+    if (!safe.safe) return this.emit({ state: 'deferred', configured: true, canDownload: false, message: `Update check will wait until ${safe.reason}.` });
+    this.emit({ state: 'checking', configured: true, message: 'Checking GitHub for updates…', progress: null, canDownload: false });
     this.event('update_check_started', { manual: Boolean(manual) });
     try {
       const apiBase = String(this.config.apiBaseUrl || 'https://api.github.com').replace(/\/$/, '');
@@ -162,8 +205,12 @@ class RecoveryAwareUpdateManager {
       if (compareVersions(version, this.app.getVersion()) <= 0) {
         this.pendingRelease = null;
         this.downloadPath = '';
+        if (this.preferences.skippedVersion || this.preferences.remindVersion || Number(this.preferences.remindAfter || 0) > 0) {
+          this.preferences = { skippedVersion: '', remindVersion: '', remindAfter: 0 };
+          this.savePreferences();
+        }
         this.event('update_current', { latest_version: version });
-        return this.emit({ state: 'current', configured: true, message: `PulseStudio ${this.app.getVersion()} is up to date.`, progress: null, availableVersion: '' });
+        return this.emit({ state: 'current', configured: true, message: `PulseStudio ${this.app.getVersion()} is up to date.`, progress: null, availableVersion: '', releaseNotes: '', canDownload: false });
       }
       const pattern = new RegExp(this.config.assetPattern || '^PulseStudio-cross-platform-v([0-9]+\\.[0-9]+\\.[0-9]+)\\.zip$', 'i');
       const assets = Array.isArray(release?.assets) ? release.assets : [];
@@ -171,23 +218,70 @@ class RecoveryAwareUpdateManager {
       const asset = assets.find((item) => String(item?.name || '') === expectedName) || assets.find((item) => pattern.test(String(item?.name || '')));
       if (!asset?.browser_download_url) throw new Error(`Release v${version} does not contain ${expectedName}.`);
       this.pendingRelease = { version, release, asset };
-      this.event('update_available', { available_version: version });
-      if (!safe.safe) return this.emit({ state: 'deferred', configured: true, availableVersion: version, message: `PulseStudio v${version} is available and will wait until ${safe.reason}.`, progress: 0 });
-      this.emit({ state: 'downloading', configured: true, availableVersion: version, message: `Downloading PulseStudio v${version}…`, progress: 0, releaseNotes: String(release?.body || '').slice(0, 4000) });
+      this.downloadPath = '';
+      const releasePatch = this.releasePatch(version, release);
+
+      if (this.preferences.skippedVersion && compareVersions(version, this.preferences.skippedVersion) > 0) {
+        this.preferences.skippedVersion = '';
+        this.savePreferences();
+      }
+      if (this.preferences.remindVersion && this.preferences.remindVersion !== version) {
+        this.preferences.remindVersion = '';
+        this.preferences.remindAfter = 0;
+        this.savePreferences();
+      }
+
+      if (!manual && this.preferences.skippedVersion === version) {
+        this.event('update_suppressed', { reason: 'skipped', available_version: version });
+        return this.emit({ ...releasePatch, state: 'skipped', canDownload: false, message: `PulseStudio v${version} is available, but this version was skipped.` });
+      }
+      if (!manual && this.preferences.remindVersion === version && Number(this.preferences.remindAfter || 0) > Date.now()) {
+        this.event('update_suppressed', { reason: 'remind_later', available_version: version });
+        return this.emit({ ...releasePatch, state: 'reminded', canDownload: false, remindAfter: Number(this.preferences.remindAfter || 0), message: `PulseStudio v${version} is available. The reminder is postponed.` });
+      }
+
+      this.event('update_available', { available_version: version, manual: Boolean(manual) });
+      return this.emit({
+        ...releasePatch,
+        state: 'available',
+        canDownload: true,
+        message: `PulseStudio v${version} is available. Update now or choose another reminder option.`
+      });
+    } catch (error) {
+      this.event('update_error', { stage: 'check', error_name: error?.name || 'Error' });
+      return this.emit({ state: 'error', configured: true, progress: null, canDownload: false, availableVersion: '', message: 'The update check could not finish. Check your connection and try again later.', technicalError: error?.message || String(error) });
+    }
+  }
+  async download() {
+    if (!this.state.configured) return this.snapshot();
+    if (!this.pendingRelease) {
+      const checked = await this.check(true);
+      if (checked.state !== 'available') return checked;
+    }
+    const safe = this.isSafe();
+    if (!safe.safe) {
+      const version = this.pendingRelease?.version || this.state.availableVersion || '';
+      return this.emit({ state: 'available', configured: true, availableVersion: version, canDownload: true, message: `PulseStudio v${version} is available. Finish ${safe.reason}, then choose Update Now.` });
+    }
+    const { version, release } = this.pendingRelease;
+    this.clearSuppressionForVersion(version);
+    this.event('update_download_requested', { available_version: version });
+    this.emit({ ...this.releasePatch(version, release), state: 'downloading', configured: true, availableVersion: version, canDownload: false, message: `Downloading PulseStudio v${version}…`, progress: 0 });
+    try {
       await this.downloadPending();
       return this.snapshot();
     } catch (error) {
-      this.event('update_error', { stage: 'check', error_name: error?.name || 'Error' });
-      return this.emit({ state: 'error', configured: true, progress: null, message: 'The update check could not finish. Check your connection and try again later.', technicalError: error?.message || String(error) });
+      this.event('update_error', { stage: 'download', error_name: error?.name || 'Error' });
+      return this.emit({ ...this.releasePatch(version, release), state: 'error', configured: true, availableVersion: version, canDownload: true, progress: null, message: 'The update could not be downloaded. Check your connection and try again.', technicalError: error?.message || String(error) });
     }
   }
   async downloadPending() {
     if (!this.pendingRelease) return this.snapshot();
-    const { version, asset } = this.pendingRelease;
+    const { version, asset, release } = this.pendingRelease;
     const updatesDir = path.join(this.app.getPath('userData'), 'updates');
     const destination = path.join(updatesDir, `PulseStudio-cross-platform-v${version}.zip`);
     const headers = { Accept: 'application/octet-stream', 'User-Agent': `PulseStudio/${this.app.getVersion()}` };
-    await downloadFile(asset.browser_download_url, destination, headers, (progress) => this.emit({ state: 'downloading', configured: true, availableVersion: version, progress, message: `Downloading PulseStudio v${version}… ${Math.round(progress * 100)}%` }));
+    await downloadFile(asset.browser_download_url, destination, headers, (progress) => this.emit({ ...this.releasePatch(version, release), state: 'downloading', configured: true, availableVersion: version, canDownload: false, progress, message: `Downloading PulseStudio v${version}… ${Math.round(progress * 100)}%` }));
     if (Number(asset.size || 0) > 0 && fs.statSync(destination).size !== Number(asset.size)) throw new Error('The downloaded update size does not match the GitHub release asset.');
     const digest = String(asset.digest || '').trim();
     if (/^sha256:/i.test(digest)) {
@@ -197,22 +291,39 @@ class RecoveryAwareUpdateManager {
     }
     this.downloadPath = destination;
     this.event('update_downloaded', { available_version: version, verified_digest: /^sha256:/i.test(digest) });
-    return this.emit({ state: 'ready', configured: true, availableVersion: version, progress: 1, message: `PulseStudio v${version} is ready. Restart when convenient to install it.` });
+    return this.emit({ ...this.releasePatch(version, release), state: 'ready', configured: true, availableVersion: version, canDownload: false, progress: 1, message: `PulseStudio v${version} is ready. Restart now to install it.` });
+  }
+  remindLater() {
+    if (!this.pendingRelease) return { ok: false, reason: 'No update is waiting for a reminder choice.', status: this.snapshot() };
+    const version = this.pendingRelease.version;
+    const hours = Math.max(1, Number(this.config.remindLaterHours || 24));
+    const remindAfter = Date.now() + hours * 60 * 60 * 1000;
+    this.preferences.remindVersion = version;
+    this.preferences.remindAfter = remindAfter;
+    if (this.preferences.skippedVersion === version) this.preferences.skippedVersion = '';
+    this.savePreferences();
+    this.event('update_remind_later', { available_version: version, hours });
+    const status = this.emit({ ...this.releasePatch(version, this.pendingRelease.release), state: 'reminded', canDownload: false, remindAfter, message: `PulseStudio will remind you about v${version} later.` });
+    return { ok: true, remindAfter, status };
+  }
+  skipVersion() {
+    if (!this.pendingRelease) return { ok: false, reason: 'No update is available to skip.', status: this.snapshot() };
+    const version = this.pendingRelease.version;
+    this.preferences.skippedVersion = version;
+    this.preferences.remindVersion = '';
+    this.preferences.remindAfter = 0;
+    this.savePreferences();
+    this.event('update_skipped', { available_version: version });
+    const status = this.emit({ ...this.releasePatch(version, this.pendingRelease.release), state: 'skipped', canDownload: false, message: `PulseStudio v${version} will be skipped. You will still be notified about newer releases.` });
+    this.pendingRelease = null;
+    this.downloadPath = '';
+    return { ok: true, status };
   }
   async resumeDeferred() {
     if (!this.state.configured) return this.snapshot();
     const safe = this.isSafe();
     if (!safe.safe) return this.snapshot();
-    if (this.pendingRelease && !this.downloadPath) {
-      try {
-        this.emit({ state: 'downloading', message: `PulseStudio is idle. Downloading v${this.pendingRelease.version}…`, progress: 0 });
-        await this.downloadPending();
-      } catch (error) {
-        this.event('update_error', { stage: 'download', error_name: error?.name || 'Error' });
-        this.emit({ state: 'error', message: 'The update could not be downloaded. Check your connection and try again later.', technicalError: error?.message || String(error), progress: null });
-      }
-    } else if (!this.pendingRelease) await this.check(false);
-    return this.snapshot();
+    return this.check(false);
   }
   createInstallHelper() {
     if (!this.downloadPath || !this.pendingRelease) throw new Error('No downloaded update is ready.');
@@ -232,7 +343,7 @@ class RecoveryAwareUpdateManager {
         `$pkg = Get-Content (Join-Path $src 'app\\package.json') -Raw | ConvertFrom-Json\nif ($pkg.version -ne $expected) { throw 'Update version validation failed.' }\n` +
         `Get-ChildItem -LiteralPath $src -File | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $root $_.Name) -Force }\n` +
         `$srcApp = Join-Path $src 'app'\n$dstApp = Join-Path $root 'app'\n` +
-        `$rc = Start-Process -FilePath 'robocopy.exe' -ArgumentList @($srcApp,$dstApp,'/MIR','/R:2','/W:1','/XD','node_modules','logs','.pulsestudio-runtime-windows') -Wait -PassThru -WindowStyle Hidden\n` +
+        `$rc = Start-Process -FilePath 'robocopy.exe' -ArgumentList @($srcApp,$dstApp,'/MIR','/IS','/IT','/R:2','/W:1','/XD','node_modules','logs','.pulsestudio-runtime-windows') -Wait -PassThru -WindowStyle Hidden\n` +
         `if ($rc.ExitCode -gt 7) { throw ('robocopy failed with exit code ' + $rc.ExitCode) }\n` +
         `Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue\nStart-Process -FilePath ${psQuote(launcher)}\n`;
       fs.writeFileSync(helper, script, 'utf8');
@@ -244,12 +355,12 @@ class RecoveryAwareUpdateManager {
     const shell = process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash';
     const script = `#!${shell}\nset -eu\nexec >> ${shellQuote(log)} 2>&1\necho "PulseStudio update started: $(date)"\n` +
       `ROOT=${shellQuote(appRoot)}\nZIP=${shellQuote(this.downloadPath)}\nEXPECTED=${shellQuote(version)}\nPID_TO_WAIT=${process.pid}\n` +
-      `while kill -0 "$PID_TO_WAIT" >/dev/null 2>&1; do sleep 0.25; done\nTMP_DIR="$(mktemp -d -t pulsestudio-update)"\n` +
+      `while kill -0 "$PID_TO_WAIT" >/dev/null 2>&1; do sleep 0.25; done\nTMP_DIR="$(mktemp -d "\${TMPDIR:-/tmp}/pulsestudio-update.XXXXXX")"\n` +
       `/usr/bin/unzip -q "$ZIP" -d "$TMP_DIR"\nSRC="$TMP_DIR/PulseStudio"\n` +
       `[ -f "$SRC/app/package.json" ] || { echo "Invalid update package"; exit 1; }\n` +
       `ACTUAL="$(/usr/bin/env node -p "require('$SRC/app/package.json').version")"\n[ "$ACTUAL" = "$EXPECTED" ] || { echo "Version mismatch: $ACTUAL"; exit 1; }\n` +
-      `/usr/bin/rsync -a --delete --exclude '.git/' --exclude 'app/node_modules/' --exclude 'app/logs/' --exclude 'app/.pulsestudio-runtime-windows/' "$SRC/" "$ROOT/"\n` +
-      `/bin/chmod +x "$ROOT/Start PulseStudio - macOS.command" 2>/dev/null || true\n/bin/rm -rf "$TMP_DIR"\necho "PulseStudio v$EXPECTED installed: $(date)"\n` +
+      `/usr/bin/rsync -a --checksum --delete --exclude '.git/' --exclude 'app/node_modules/' --exclude 'app/logs/' --exclude 'app/.pulsestudio-runtime-windows/' "$SRC/" "$ROOT/"\n` +
+      `/bin/chmod +x "$ROOT/Start PulseStudio - macOS.command" "$ROOT/Start PulseStudio - Linux.sh" 2>/dev/null || true\n/bin/rm -rf "$TMP_DIR"\necho "PulseStudio v$EXPECTED installed: $(date)"\n` +
       (process.platform === 'darwin' ? `/usr/bin/open "$ROOT/Start PulseStudio - macOS.command"\n` : `"$ROOT/Start PulseStudio - Linux.sh" >/dev/null 2>&1 &\n`);
     fs.writeFileSync(helper, script, { encoding: 'utf8', mode: 0o755 });
     try { fs.chmodSync(helper, 0o755); } catch {}
@@ -259,7 +370,7 @@ class RecoveryAwareUpdateManager {
     if (this.state.state !== 'ready' || !this.downloadPath) return { ok: false, reason: 'No downloaded update is ready.' };
     const safe = this.isSafe();
     if (!safe.safe) {
-      this.emit({ state: 'deferred', message: `Restart will wait until ${safe.reason}.` });
+      this.emit({ state: 'ready', message: `The update is ready. Finish ${safe.reason}, then choose Restart & Install.` });
       return { ok: false, reason: safe.reason };
     }
     try {
@@ -267,12 +378,12 @@ class RecoveryAwareUpdateManager {
       const child = spawn(helper.command, helper.args, { detached: true, stdio: 'ignore', windowsHide: true });
       child.unref();
       this.event('update_install_started', { available_version: this.pendingRelease?.version || '' });
-      this.emit({ state: 'installing', message: `Installing PulseStudio v${this.pendingRelease?.version || ''}…` });
+      this.emit({ state: 'installing', canDownload: false, message: `Installing PulseStudio v${this.pendingRelease?.version || ''}…` });
       setTimeout(() => this.app.quit(), 250);
       return { ok: true };
     } catch (error) {
       this.event('update_error', { stage: 'install', error_name: error?.name || 'Error' });
-      this.emit({ state: 'error', message: 'PulseStudio could not start the update installer.', technicalError: error?.message || String(error), progress: null });
+      this.emit({ state: 'error', canDownload: false, message: 'PulseStudio could not start the update installer.', technicalError: error?.message || String(error), progress: null });
       return { ok: false, reason: error?.message || String(error) };
     }
   }

@@ -1,6 +1,6 @@
 # PulseStudio Analytics
 
-PulseStudio v0.2.120 is connected to the PulseStudio PostHog Cloud project (US region).
+PulseStudio v0.2.124 is connected to the PulseStudio PostHog Cloud project (US region).
 
 ## Privacy
 
@@ -10,7 +10,7 @@ PulseStudio never includes recordings, screen contents, microphone/system audio,
 
 ## Core analytics available
 
-PulseStudio v0.2.120 retains the broad privacy-limited instrumentation for product usage, trends, reliability, and errors, with the corrected PostHog project token. Event properties use control IDs, categorical settings, counters, duration buckets, and sanitized error names/codes rather than user content.
+PulseStudio v0.2.124 retains the broad privacy-limited instrumentation for product usage, trends, reliability, and errors, with the corrected PostHog project token. Event properties use control IDs, categorical settings, counters, duration buckets, and sanitized error names/codes rather than user content.
 
 - Active installations and sessions (`app_started`, `app_heartbeat`, `app_closed`), session IDs, launch counts and install-age trends
 - App version, OS, architecture, Electron version and portable/installed mode
@@ -19,8 +19,8 @@ PulseStudio v0.2.120 retains the broad privacy-limited instrumentation for produ
 - Microphone mute use and microphone cleanup mode
 - Recording health, capture interruptions, unexpected stops, writer/encoder failures
 - RNNoise fallback occurrences
-- Bookmarks saved and My Voice highlight usage
-- Voice profile enrollment/clear usage
+- Bookmarks saved
+- My Voice highlight and voice-profile events are intentionally inactive in v0.2.124 while the feature remains disabled for audio-isolation testing
 - Playback timeline, captions, transcript, snapshot, fullscreen, speed, recording-selection and shortcut usage
 - Broad non-content UI control usage (`ui_control_used`) grouped by feature area
 - Transcription, speaker detection and meeting-insight start/completion/failure trends

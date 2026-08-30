@@ -1,4 +1,39 @@
-# PulseStudio v0.2.120
+# PulseStudio v0.2.124
+
+
+## v0.2.124 Automatic GitHub Release update popup for unsigned builds
+
+- PulseStudio now checks the public GitHub Releases feed automatically after launch and every configured interval while the app is idle.
+- When a newer `PulseStudio-cross-platform-v<version>.zip` release is found, users see an in-app update popup without opening About & Diagnostics.
+- The popup offers **Update Now**, **Remind Me Later**, and **Skip This Version**. Remind Later postpones that version for 24 hours; Skip suppresses that version but never suppresses a newer release.
+- **Update Now** downloads the exact release ZIP, validates its reported size and SHA-256 digest when GitHub provides one, then restarts through PulseStudio's existing portable update helper.
+- This flow does not use Electron/Squirrel autoUpdater and therefore does not require an Apple Developer account or a signed/notarized PulseStudio `.app`. The macOS launcher continues to use Electron's stable signed host.
+- Update checks and installation remain recovery-aware and never interrupt active recording, recovery, or local AI processing.
+- The existing **About & Diagnostics → Check for updates** control remains available as a manual fallback.
+- No recording, microphone, audio cleanup, transcription, speaker, or playback processing was changed in this build.
+
+## v0.2.123 My Voice highlighting disabled for audio-isolation testing
+
+This diagnostic release disables **My Voice highlighting end-to-end** so audio quality can be compared without that analysis path running at all.
+
+- No live My Voice microphone analyser is started during recording.
+- No My Voice candidate sections are calculated, checkpointed, refined, persisted, or loaded during playback.
+- The My Voice playback icon/timeline overlay and live recording indicators are removed.
+- My Voice enrollment controls are hidden for this build so the feature cannot be started accidentally.
+- Automatic speaker identification/diarization, transcription, chapters, insights, bookmarks, RNNoise, capture-time echo cancellation, and the v0.2.122 audio-preservation changes remain enabled and otherwise unchanged.
+- Existing My Voice metadata from older recordings is left on disk but is ignored by this build.
+
+## v0.2.122 capture-audio preservation without feature removal
+
+This release keeps **My Voice highlighting**, local **My Voice enrollment**, and **automatic speaker identification/diarization** fully enabled while changing only the post-recording audio stages implicated by the v0.2.120 logs.
+
+- Enhanced/Strong recordings that already have an RNNoise sidecar no longer run a second denoise/gate/normalization chain after Stop.
+- Removed the previous fixed **1.58-1.68x post-recording microphone boost**.
+- Removed the second offline **adaptive NLMS echo-cancellation** pass. Capture-time WebRTC echo cancellation and RNNoise remain enabled.
+- Final mixing preserves system/application audio as **stereo** and duplicates the mono microphone into left/right before mixing.
+- The final limiter is attenuation-only and receives a small amount of pre-mix headroom; it cannot normalize quiet residual noise upward.
+- Hidden `.microphone-*` / playback-repair files and output paths that are still finalizing are excluded from the Playback library, preventing transcription or speaker detection from racing an unfinished MP4.
+- My Voice timestamps remain metadata-only and automatic speaker detection still runs after transcription on the completed recording.
 
 ## v0.2.120 analytics project configuration correction
 
@@ -348,9 +383,9 @@ Do not delete recovery files if a recording was interrupted; PulseStudio protect
 
 ## Automatic updates
 
-PulseStudio v0.2.112 and later can check the public `girishxp/PulseStudio` GitHub Releases feed automatically. When a newer `PulseStudio-cross-platform-v<version>.zip` release is available, PulseStudio downloads it only while recording/recovery/AI work is idle, verifies the GitHub asset size and SHA-256 digest when GitHub supplies one, and shows **Restart and update** in App Diagnostics. The update helper applies the ZIP only after PulseStudio exits, preserves local dependencies/logs, and restarts the normal PulseStudio launcher.
+PulseStudio v0.2.124 and later checks the public `girishxp/PulseStudio` GitHub Releases feed automatically. When a newer `PulseStudio-cross-platform-v<version>.zip` release is available and the app is idle, PulseStudio shows an in-app update popup. The user can update immediately, postpone the reminder for 24 hours, or skip that specific version. Update Now downloads the ZIP, verifies the GitHub asset size and SHA-256 digest when GitHub supplies one, and applies it only after PulseStudio exits. Local dependencies/logs are preserved and the normal platform launcher restarts PulseStudio.
 
-For future releases, publish a normal GitHub Release with a semantic tag such as `v0.2.120` and attach exactly `PulseStudio-cross-platform-v0.2.120.zip`. No AWS server is required.
+The updater is intentionally a portable ZIP updater rather than Electron/Squirrel autoUpdater, so the macOS PulseStudio build itself does not need an Apple Developer certificate for this flow. For future releases, publish a normal GitHub Release with a semantic tag such as `v0.2.124` and attach exactly `PulseStudio-cross-platform-v0.2.124.zip`. No AWS server is required.
 
 ## Anonymous product analytics
 
