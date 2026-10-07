@@ -5,3 +5,13 @@ dist/
 # Local branded launcher runtimes (generated on the target machine)
 .pulsestudio-runtime-macos/
 .pulsestudio-runtime-windows/
+
+# Private Node runtime prepared on first click
+.pulsestudio-node-runtime/
+
+# Bundled dependencies live in release ZIPs, not the source repository
+launcher-cache/
+.pulsestudio-unpack.*/
+
+# Prepared cross-platform binaries are carried in release ZIPs
+runtime/

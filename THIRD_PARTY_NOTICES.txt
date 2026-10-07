@@ -45,3 +45,28 @@ License: MIT
 Project: https://huggingface.co/onnx-community/silero-vad
 Upstream project: https://github.com/snakers4/silero-vad
 Purpose in PulseStudio Utility: local post-recording voice-activity analysis used for diagnostics and speech-preservation checks only. VAD never controls microphone gain or deletes recorded speech.
+
+Node.js 24.21.0 and npm
+Node.js project: https://nodejs.org/
+The prepared Apple silicon runtime includes the official Node.js distribution
+and its LICENSE, along with the dependency packages' upstream license files.
+Purpose: local click-to-launch setup and dependency checks without changing the
+computer's system Node installation.
+
+Prepared Windows desktop runtime (v0.2.140)
+------------------------------------------
+Includes official Electron 43.3.0 for Windows x64, FFmpeg, the Windows native
+capture/input/AI dependencies, and Microsoft's app-local Visual C++ runtime.
+The original component notices are retained in app/runtime/windows-x64,
+including Electron's license, Chromium notices, native-package license files,
+and the Microsoft redistributable license. Verified upstream source references
+and binary checksums are recorded in its build-provenance.json.
+No Windows prerequisite installer is needed to launch this release.
+
+Windows component versions and notices
+--------------------------------------
+FFmpeg 6.1.1: GPL license retained beside the unpacked ffmpeg.exe.
+ONNX Runtime 1.30.0: MIT license and upstream notices in Third-Party-Licenses.
+Sharp 0.35.4 / libvips 8.18.6: Apache / LGPL notices in Third-Party-Licenses.
+Microsoft Visual C++ runtime 14.44.35211: app-local x64 libraries and the
+upstream redistributable RTF license are retained beside PulseStudio.exe.

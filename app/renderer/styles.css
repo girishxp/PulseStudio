@@ -8543,3 +8543,546 @@ body:not(.compact-mode) .transparency-cycle-button.mini-only-setting-pending {
 
 /* v0.2.127: macOS update relaunch no longer opens the downloaded .command launcher. */
 /* v0.2.128: updater actions use an explicit equal-column grid; transparency feedback is click-only tooltip UI. */
+
+/* v0.2.135 — Classic Mac workspace and a readable Mini recording controller.
+   Keep existing controls and state classes; the layout changes their spacing
+   and material rather than replacing recording, playback, or settings tools. */
+:root { --surface-1: #292a2e; --surface-2: #32343a; }
+html[data-theme="light"] { --surface-1: #fff; --surface-2: #eceef2; }
+html:not([data-ui-theme="studio"]) {
+  --accent: #159c95;
+  --accent-strong: #087b75;
+  --text-1: #f2f2f4;
+  --text-2: #c2c3ca;
+  --text-3: #9699a3;
+  --surface-1: #292a2e;
+  --surface-2: #32343a;
+  --glass: #292a2e;
+  --glass-strong: #32343a;
+  --glass-soft: #25262a;
+  --glass-hover: #383a41;
+  --line: #42444b;
+  --line-strong: #60636e;
+  --radius-panel: 13px;
+  --radius-control: 8px;
+  --shadow-md: 0 3px 12px rgba(0,0,0,.12);
+}
+html:not([data-ui-theme="studio"])[data-theme="light"] {
+  --accent: #007c79;
+  --accent-strong: #00615f;
+  --text-1: #252629;
+  --text-2: #555861;
+  --text-3: #737780;
+  --surface-1: #fff;
+  --surface-2: #eceef2;
+  --glass: #fff;
+  --glass-strong: #eceef2;
+  --glass-soft: #f5f5f7;
+  --glass-hover: #e9ebef;
+  --line: #dadce2;
+  --line-strong: #b9bec9;
+  --shadow-md: 0 3px 12px rgba(24,30,40,.045);
+}
+html:not([data-ui-theme="studio"]) body { background: #202124; }
+html:not([data-ui-theme="studio"])[data-theme="light"] body { background: #f5f5f7; }
+html:not([data-ui-theme="studio"]) body::before { background: none; }
+html:not([data-ui-theme="studio"]) body:not(.compact-mode) .app-shell { padding: 17px 20px 24px; }
+body:not(.compact-mode) .topbar { min-height: 46px; margin-bottom: 14px; }
+body:not(.compact-mode) .brand-mark { width: 32px; height: 32px; border-radius: 9px; box-shadow: none; }
+body:not(.compact-mode) .brand-copy .eyebrow { display: none; }
+body:not(.compact-mode) h1 { font-size: 18px; font-weight: 600; }
+body:not(.compact-mode) h2 { font-size: 17px; font-weight: 600; }
+body:not(.compact-mode) h3 { font-weight: 600; }
+html:not([data-ui-theme="studio"]) .panel,
+html:not([data-ui-theme="studio"]) .modal { background: var(--surface-1); border-color: var(--line); backdrop-filter: none; -webkit-backdrop-filter: none; }
+html:not([data-ui-theme="studio"]) .header-button,
+html:not([data-ui-theme="studio"]) .icon-button,
+html:not([data-ui-theme="studio"]) .button.secondary { color: var(--text-2); background: var(--surface-1); border-color: var(--line); box-shadow: none; border-radius: 8px; font-weight: 500; }
+html:not([data-ui-theme="studio"]) .header-button:hover,
+html:not([data-ui-theme="studio"]) .icon-button:hover,
+html:not([data-ui-theme="studio"]) .button.secondary:hover { color: var(--text-1); background: var(--glass-hover); }
+html:not([data-ui-theme="studio"]) .appearance-controls { background: transparent; border: 0; padding: 0; }
+body:not(.compact-mode) .workspace-nav { width: 100%; gap: 12px !important; padding-bottom: 13px; border-bottom: 1px solid var(--line); margin-bottom: 18px; }
+body:not(.compact-mode) .workspace-mode-tabs { margin-left: auto; }
+html:not([data-ui-theme="studio"]) .workspace-tab-group { padding: 3px; border-radius: 9px; background: var(--surface-2); border-color: transparent; box-shadow: none; backdrop-filter: none; -webkit-backdrop-filter: none; }
+html:not([data-ui-theme="studio"]) .workspace-tab { border-radius: 6px; color: var(--text-2); font-weight: 500; min-height: 29px; min-width: 70px; padding: 5px 13px; }
+html:not([data-ui-theme="studio"]) .workspace-tab.active,
+html:not([data-ui-theme="studio"]) .workspace-tab[aria-selected="true"] { color: var(--text-1); background: var(--surface-1); box-shadow: 0 1px 4px rgba(0,0,0,.13) !important; }
+html:not([data-ui-theme="studio"]) .source-card { background: var(--surface-1); border-radius: 9px; border-color: var(--line); box-shadow: none; }
+html:not([data-ui-theme="studio"]) .source-card:hover { background: var(--glass-hover); transform: none; }
+html:not([data-ui-theme="studio"]) .source-card.selected { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--surface-1)); box-shadow: 0 0 0 1px var(--accent); }
+html:not([data-ui-theme="studio"]) .source-thumb { border-radius: 6px; }
+html:not([data-ui-theme="studio"]) .capture-mode-row,
+html:not([data-ui-theme="studio"]) .record-quick-controls,
+html:not([data-ui-theme="studio"]) .toggle-row { background: var(--glass-soft); border-color: var(--line); border-radius: 9px; box-shadow: none; }
+html:not([data-ui-theme="studio"]) select,
+html:not([data-ui-theme="studio"]) input:not([type="range"]):not([type="checkbox"]),
+html:not([data-ui-theme="studio"]) textarea { background: var(--surface-1); color: var(--text-1); border-color: var(--line); border-radius: 7px; box-shadow: none; }
+html:not([data-ui-theme="studio"]) .apple-segmented-control { background: var(--surface-2); border-color: var(--line); border-radius: 8px; box-shadow: none; }
+html:not([data-ui-theme="studio"]) .apple-segment-button.is-selected { background: var(--surface-1); color: var(--accent); box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+html:not([data-ui-theme="studio"]) .button.primary,
+html:not([data-ui-theme="studio"]) .apple-switch { background: var(--accent); }
+html:not([data-ui-theme="studio"]) .recording-browser { background: var(--glass-soft); border-color: var(--line); border-radius: 9px; }
+html:not([data-ui-theme="studio"]) .recording-item { color: var(--text-1); }
+html:not([data-ui-theme="studio"]) .recording-item:hover { background: var(--glass-hover); }
+html:not([data-ui-theme="studio"]) .recording-item.active { background: color-mix(in srgb, var(--accent) 13%, var(--surface-1)); }
+html:not([data-ui-theme="studio"]) .field-label,
+html:not([data-ui-theme="studio"]) .record-quick-heading strong { font-weight: 500; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; border: 0; }
+
+/* v0.2.136 — restore the original 262 × 84 Mini footprint. */
+body:not(.compact-mode) .mini-controller-entry { display: flex; flex-direction: column; gap: 4px; align-items: center; margin-left: auto; margin-right: 0 !important; padding: 0; background: transparent !important; border: 0 !important; border-radius: 0; box-shadow: none !important; }
+body:not(.compact-mode) #fullViewButton { display: none !important; }
+body:not(.compact-mode) #compactViewButton { min-width: 175px; min-height: 32px; padding: 7px 14px; border-radius: 8px; background: var(--accent) !important; color: #fff !important; font-size: 12px; font-weight: 600; box-shadow: none !important; }
+body:not(.compact-mode) #compactViewButton:hover { background: var(--accent-strong) !important; }
+.mini-controller-description { color: var(--text-3); font-size: 10px; line-height: 13px; font-weight: 400; white-space: nowrap; }
+
+/* The transparency bar remains Mini-only and independent of window dragging. */
+body:not(.compact-mode) #transparencyButton { display: none !important; }
+.mini-transparency-control,
+.mini-transparency-control * { -webkit-app-region: no-drag !important; }
+body.compact-mode #transparencyButton { display: inline-flex !important; align-items: center; gap: 4px; flex: 0 0 auto; padding: 0 2px; }
+body.compact-mode #transparencySlider { -webkit-appearance: none; appearance: none; width: 58px; min-width: 58px; height: 18px; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; cursor: pointer; }
+body.compact-mode #transparencySlider::-webkit-slider-runnable-track { height: 3px; border: 0; border-radius: 3px; background: color-mix(in srgb,var(--accent) 32%,var(--surface-2)); }
+body.compact-mode #transparencySlider::-webkit-slider-thumb { -webkit-appearance: none; width: 9px; height: 9px; margin-top: -3px; border: 1px solid var(--accent); border-radius: 50%; background: var(--surface-1); box-shadow: none; }
+body.compact-mode #transparencyValue { width: 22px; min-width: 22px; font-size: 8px; color: var(--text-2); font-variant-numeric: tabular-nums; line-height: 1; }
+body.compact-mode #transparencySlider:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
+
+/* A quiet toolbar, one live action row, and two slim information lines. */
+body.compact-mode { background: transparent !important; }
+body.compact-mode .app-shell { width: 100%; max-width: 262px !important; height: 84px; padding: 2px 4px 3px !important; overflow: hidden; border: 1px solid var(--line); border-radius: 9px; background: var(--surface-1); box-shadow: none; }
+body.compact-mode .topbar { display: flex !important; flex-direction: row !important; align-items: center !important; gap: 3px !important; min-height: 23px !important; height: 23px !important; padding: 0 1px 2px !important; margin: 0 0 3px !important; border-bottom: 1px solid var(--line); }
+body.compact-mode .window-drag-handle { flex: 1 1 auto; min-width: 4px !important; min-height: 20px !important; }
+body.compact-mode .topbar-actions { width: auto; flex-wrap: nowrap !important; gap: 3px !important; }
+body.compact-mode .appearance-controls { padding: 0 !important; gap: 3px !important; border: 0 !important; background: transparent !important; box-shadow: none !important; }
+body.compact-mode .compact-privacy-indicator { width: 12px !important; height: 18px !important; flex: 0 0 12px !important; }
+body.compact-mode .compact-privacy-indicator svg { width: 12px !important; height: 12px !important; }
+body.compact-mode #themeToggle,
+body.compact-mode #alwaysOnTopButton,
+body.compact-mode .compact-full-view-button { display: inline-flex !important; align-items: center !important; justify-content: center !important; width: 20px !important; min-width: 20px !important; max-width: 20px !important; flex: 0 0 20px !important; height: 20px !important; min-height: 20px !important; padding: 0 !important; border: 0 !important; border-radius: 5px !important; background: transparent !important; color: var(--text-2); box-shadow: none !important; }
+body.compact-mode #themeToggle:hover,
+body.compact-mode #alwaysOnTopButton:hover,
+body.compact-mode .compact-full-view-button:hover { background: var(--surface-2) !important; transform: none !important; }
+body.compact-mode .compact-full-view-label { display: none !important; }
+body.compact-mode .compact-full-view-button svg,
+body.compact-mode #themeToggle svg,
+body.compact-mode #alwaysOnTopButton svg { width: 12px !important; height: 12px !important; }
+html[data-platform="darwin"] body.compact-mode .compact-mac-window-controls { height: 20px !important; gap: 5px !important; padding: 0 1px !important; }
+html[data-platform="darwin"] body.compact-mode .compact-mac-window-button { width: 10px; height: 10px; min-width: 10px; min-height: 10px; box-shadow: none; }
+body.compact-mode #workspacePanel { padding: 0 !important; margin: 0 !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; }
+body.compact-mode .compact-recorder-card,
+body.compact-mode.compact-recording-active .compact-recorder-card { display: grid !important; grid-template-columns: minmax(0,1fr) minmax(0,1fr); grid-template-rows: 24px 9px 10px; padding: 0 !important; margin: 0 !important; gap: 3px 5px !important; border: 0 !important; background: transparent !important; box-shadow: none !important; border-radius: 0 !important; }
+body.compact-mode .compact-record-row,
+body.compact-mode.compact-recording-active .compact-record-row { display: flex !important; grid-column: 1 / -1; grid-row: 1; align-items: center !important; justify-content: space-between !important; height: 24px; min-height: 24px; gap: 6px !important; }
+body.compact-mode .compact-record-time,
+body.compact-mode:not(.compact-recording-active) .compact-record-time { display: grid !important; grid-template-columns: 5px auto 5px !important; grid-template-rows: 9px 13px !important; align-items: center; gap: 0 3px !important; width: 61px !important; min-width: 61px !important; height: 22px; color: var(--text-1); }
+body.compact-mode.compact-recording-active .compact-record-time { display: grid !important; grid-template-columns: 16px 5px auto 5px !important; grid-template-rows: 9px 13px !important; gap: 0 3px !important; width: 70px !important; min-width: 70px !important; height: 22px; }
+body.compact-mode .compact-record-time .record-dot,
+body.compact-mode.compact-recording-active .compact-record-time .record-dot { grid-row: 1 !important; grid-column: 1 !important; width: 4px !important; height: 4px !important; background: var(--accent) !important; box-shadow: none !important; }
+body.compact-mode.compact-recording-active .compact-record-time .record-dot { grid-column: 2 !important; background: #d25758 !important; }
+body.compact-mode .compact-record-state { grid-row: 1 !important; grid-column: 2 !important; font-size: 6.5px !important; line-height: 9px !important; font-weight: 600 !important; color: var(--text-2) !important; letter-spacing: .025em !important; }
+body.compact-mode.compact-recording-active .compact-record-state { grid-column: 3 !important; }
+body.compact-mode #compactRecordingDuration,
+body.compact-mode.compact-recording-active #compactRecordingDuration { grid-row: 2 !important; grid-column: 1 / -1 !important; margin: 0; font-size: 10.5px !important; font-weight: 600 !important; line-height: 13px !important; letter-spacing: 0 !important; color: var(--text-1); }
+body.compact-mode.compact-recording-active #compactRecordingDuration { grid-column: 2 / -1 !important; }
+body.compact-mode.compact-recording-active .compact-record-mic-toggle { grid-row: 1 / 3; grid-column: 1; width: 16px; min-width: 16px; height: 19px; min-height: 19px; padding: 0; border: 0; background: transparent; border-radius: 4px; }
+body.compact-mode.compact-recording-active .compact-record-mic-toggle svg { width: 12px; height: 12px; }
+body.compact-mode #compactHealthIndicator,
+body.compact-mode.compact-recording-active #compactHealthIndicator { grid-row: 1; grid-column: 3; position: static; width: 4px; height: 4px; }
+body.compact-mode.compact-recording-active #compactHealthIndicator { grid-column: 4; }
+body.compact-mode .compact-action-cluster,
+body.compact-mode:not(.compact-recording-active) .compact-action-cluster,
+body.compact-mode.compact-recording-active .compact-action-cluster { display: flex !important; align-items: center !important; justify-content: flex-end !important; width: auto !important; gap: 4px !important; height: 24px; margin: 0 !important; }
+body.compact-mode .compact-record-kind-control,
+body.compact-mode:not(.compact-recording-active) .compact-record-kind-control { display: grid !important; grid-template-columns: repeat(2,21px) !important; width: 47px; height: 24px !important; padding: 1px !important; gap: 2px !important; flex: 0 0 47px; border: 1px solid var(--line); border-radius: 6px !important; background: var(--surface-2); box-shadow: none; }
+body.compact-mode.compact-recording-active .compact-record-kind-control { display: none !important; }
+body.compact-mode .compact-record-kind-button { width: 21px !important; min-width: 21px !important; height: 20px !important; min-height: 20px !important; border-radius: 4px !important; }
+body.compact-mode .compact-record-kind-button svg { width: 13px !important; height: 13px !important; }
+body.compact-mode .compact-record-kind-button.is-selected,
+body.compact-mode .compact-record-kind-button.is-selected:hover:not(:disabled),
+body.compact-mode .compact-record-kind-button.is-selected:active:not(:disabled),
+html[data-theme="light"] body.compact-mode .compact-record-kind-button.is-selected,
+html[data-theme="light"] body.compact-mode .compact-record-kind-button.is-selected:hover:not(:disabled),
+html[data-theme="light"] body.compact-mode .compact-record-kind-button.is-selected:active:not(:disabled) { color: var(--accent) !important; background: var(--surface-1) !important; box-shadow: 0 0 0 1px color-mix(in srgb,var(--accent) 30%,transparent) inset !important; }
+body.compact-mode #compactPauseButton,
+body.compact-mode #compactBookmarkButton,
+body.compact-mode.compact-recording-active #compactPauseButton,
+body.compact-mode.compact-recording-active #compactBookmarkButton { width: 24px !important; min-width: 24px !important; height: 24px !important; min-height: 24px !important; padding: 0; border: 1px solid var(--line); border-radius: 6px !important; background: transparent; box-shadow: none !important; }
+body.compact-mode .compact-action-button svg { width: 13px !important; height: 13px !important; }
+body.compact-mode #compactStartButton,
+body.compact-mode:not(.compact-recording-active) #compactStartButton,
+body.compact-mode.compact-recording-active #compactStartButton { flex: 0 0 auto !important; width: 60px !important; min-width: 60px !important; max-width: 60px !important; height: 24px !important; min-height: 24px !important; padding: 0 7px !important; font-size: 9px !important; font-weight: 500 !important; border-radius: 6px !important; gap: 4px !important; box-shadow: none !important; }
+body.compact-mode:not(.compact-recording-active) #compactStartButton,
+body.compact-mode:not(.compact-recording-active) #compactStartButton:hover { color: #fff !important; background: var(--accent) !important; border-color: var(--accent) !important; }
+body.compact-mode.compact-recording-active #compactStartButton,
+body.compact-mode.compact-recording-active #compactStartButton:hover { width: 60px !important; min-width: 60px !important; max-width: 60px !important; color: #fff !important; background: #be4d52 !important; border-color: #be4d52 !important; }
+body.compact-mode .compact-live-audio,
+body.compact-mode:not(.compact-recording-active) .compact-live-audio,
+body.compact-mode.compact-recording-active .compact-live-audio { grid-row: 2; grid-column: 1 / -1; display: grid !important; grid-template-columns: 1fr 1fr !important; gap: 8px !important; height: 9px; min-height: 9px; margin: 0 !important; }
+body.compact-mode .compact-live-meter { grid-template-columns: auto minmax(18px,1fr) auto !important; gap: 3px !important; font-size: 6.5px !important; line-height: 9px; }
+body.compact-mode .compact-live-meter > span:first-child { min-width: auto !important; font-weight: 500 !important; }
+body.compact-mode .compact-live-meter small { min-width: 19px !important; font-size: 6px !important; }
+body.compact-mode .compact-meter-track { height: 3px !important; }
+body.compact-mode .compact-ai-mini:not(.hidden),
+body.compact-mode:not(.compact-recording-active) .compact-ai-mini:not(.hidden) { grid-row: 3; grid-column: 1; display: flex !important; min-width: 0; height: 10px !important; min-height: 10px !important; margin: 0 !important; padding: 0 !important; gap: 3px !important; font-size: 7px !important; line-height: 10px !important; background: transparent !important; }
+body.compact-mode .compact-ai-label { min-width: 0; font-size: 7px !important; line-height: 10px !important; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+body.compact-mode .compact-ai-mini strong { flex: 0 0 auto; font-size: 7px !important; line-height: 10px !important; }
+body.compact-mode .compact-feedback:not(.hidden),
+body.compact-mode:not(.compact-recording-active) .compact-feedback:not(.hidden),
+body.compact-mode.compact-recording-active .compact-feedback.show,
+body.compact-mode .compact-status:not(:empty),
+body.compact-mode:not(.compact-recording-active) .compact-status:not(:empty) { grid-row: 3; grid-column: 1 / -1; display: block !important; position: static !important; height: 10px; min-height: 10px; margin: 0 !important; padding: 0 !important; font-size: 7px !important; line-height: 10px !important; border: 0 !important; background: transparent !important; box-shadow: none !important; color: var(--text-2) !important; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; transform: none !important; }
+body.compact-mode .compact-recorder-card:has(.compact-ai-mini:not(.hidden)) .compact-feedback,
+body.compact-mode .compact-recorder-card:has(.compact-ai-mini:not(.hidden)) .compact-status { grid-column: 2; }
+body.compact-mode .compact-status.error { color: #d45b5e !important; }
+body.compact-mode .compact-recorder-card:has(.compact-feedback:not(.hidden)) .compact-status { display: none !important; }
+
+/* Optional marker text uses the lower two information lines, leaving Stop free. */
+body.compact-mode:has(#recordingBookmarkTextEditor:not(.hidden)) .compact-live-audio,
+body.compact-mode:has(#recordingBookmarkTextEditor:not(.hidden)) .compact-ai-mini,
+body.compact-mode:has(#recordingBookmarkTextEditor:not(.hidden)) .compact-feedback,
+body.compact-mode:has(#recordingBookmarkTextEditor:not(.hidden)) .compact-status { display: none !important; }
+body.compact-mode .recording-bookmark-text-editor,
+html[data-theme="light"] body.compact-mode .recording-bookmark-text-editor { left: 5px; right: 5px; bottom: 3px; height: 23px; padding: 2px 3px; gap: 3px; border: 1px solid var(--line); border-radius: 5px; background: var(--surface-1); color: var(--text-1); box-shadow: none; }
+body.compact-mode .recording-bookmark-editor-symbol { color: var(--text-3); font-size: 8px; }
+body.compact-mode .recording-bookmark-editor-label { color: var(--text-2); font-size: 6.5px; }
+body.compact-mode .recording-bookmark-text-editor time { color: var(--text-2); font-size: 7px; }
+body.compact-mode .recording-bookmark-text-editor input,
+html[data-theme="light"] body.compact-mode .recording-bookmark-text-editor input { height: 17px; min-height: 17px; padding: 1px 4px; border-radius: 4px; font-size: 8px; color: var(--text-1); background: var(--surface-2); box-shadow: none; }
+body.compact-mode .recording-bookmark-text-editor button,
+html[data-theme="light"] body.compact-mode .recording-bookmark-text-editor button { height: 17px; min-height: 17px; padding: 1px 4px; border-radius: 4px; font-size: 7px; color: var(--text-1); background: var(--surface-2); box-shadow: none; }
+
+/* Older light-theme control rules were deliberately more specific. Match the
+   toolbar hierarchy here so its actual native rendering stays flat as well. */
+html[data-theme="light"] body.compact-mode .topbar :is(#themeToggle,#alwaysOnTopButton,#compactFullViewButton) { border: 0 !important; background: transparent !important; color: var(--text-2) !important; box-shadow: none !important; }
+html[data-theme="light"] body.compact-mode .topbar :is(#themeToggle,#alwaysOnTopButton,#compactFullViewButton):is(:hover,:active) { border: 0 !important; background: var(--surface-2) !important; box-shadow: none !important; transform: none !important; }
+html[data-theme="light"] body.compact-mode .topbar #alwaysOnTopButton.active { border: 0 !important; color: var(--accent) !important; background: color-mix(in srgb,var(--accent) 10%,var(--surface-1)) !important; box-shadow: none !important; }
+html[data-theme="light"] body.compact-mode:not(.compact-recording-active) #compactRecordingKindControl { background: var(--surface-2) !important; border: 1px solid var(--line) !important; box-shadow: none !important; }
+html[data-theme="light"] body.compact-mode.compact-recording-active :is(#compactPauseButton,#compactBookmarkButton),
+html[data-theme="light"] body.compact-mode.compact-recording-active :is(#compactPauseButton,#compactBookmarkButton):is(:hover,:active) { border: 1px solid var(--line) !important; background: transparent !important; box-shadow: none !important; }
+body.compact-mode #compactPrivacyIndicator { width: 12px !important; min-width: 12px !important; max-width: 12px !important; flex: 0 0 12px !important; height: 18px !important; min-height: 18px !important; max-height: 18px !important; border: 0 !important; border-radius: 0 !important; background: transparent !important; box-shadow: none !important; }
+body.compact-mode #compactStartButton .compact-record-button-dot { width: 6px; height: 6px; box-shadow: none; }
+
+/* v0.2.137 — balanced information, a little more edge space, pastel actions.
+   The shared controller stays at 262 × 84 on both platforms. */
+html:not([data-ui-theme="studio"]) { --accent: #7db4df; --accent-strong: #5d9bcb; }
+html:not([data-ui-theme="studio"])[data-theme="light"] { --accent: #4a86b4; --accent-strong: #32729f; }
+:root { --mini-primary-bg: #c4e0f5; --mini-primary-hover: #b5d7f0; --mini-primary-ink: #244b6c; }
+body:not(.compact-mode) #compactViewButton,
+body.compact-mode #compactStartButton,
+body.compact-mode:not(.compact-recording-active) #compactStartButton,
+body.compact-mode.compact-recording-active #compactStartButton { color: var(--mini-primary-ink) !important; background: var(--mini-primary-bg) !important; border-color: #a9cde9 !important; box-shadow: none !important; }
+body:not(.compact-mode) #compactViewButton:hover,
+body.compact-mode #compactStartButton:hover,
+body.compact-mode:not(.compact-recording-active) #compactStartButton:hover,
+body.compact-mode.compact-recording-active #compactStartButton:hover { color: var(--mini-primary-ink) !important; background: var(--mini-primary-hover) !important; border-color: #98c1e0 !important; }
+body.compact-mode .app-shell { padding-left: 8px !important; padding-right: 8px !important; }
+body.compact-mode .topbar { gap: 2px !important; padding-inline: 0 !important; }
+body.compact-mode .topbar-actions { gap: 2px !important; }
+body.compact-mode .appearance-controls { gap: 2px !important; }
+html[data-theme] body.compact-mode .topbar :is(#themeToggle,#alwaysOnTopButton,#compactFullViewButton,#compactOpenRecordingsFolderButton) { display: inline-flex !important; align-items: center; justify-content: center; flex: 0 0 20px !important; width: 20px !important; min-width: 20px !important; max-width: 20px !important; height: 20px !important; min-height: 20px !important; padding: 0 !important; border: 0 !important; background: transparent !important; color: var(--text-2) !important; box-shadow: none !important; }
+html[data-theme] body.compact-mode .topbar :is(#themeToggle,#alwaysOnTopButton,#compactFullViewButton,#compactOpenRecordingsFolderButton):is(:hover,:active) { border: 0 !important; background: var(--surface-2) !important; box-shadow: none !important; }
+body.compact-mode #compactOpenRecordingsFolderButton svg { width: 12px; height: 12px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+html[data-theme] body.compact-mode .topbar #alwaysOnTopButton.active { color: var(--accent) !important; background: color-mix(in srgb,var(--accent) 10%,var(--surface-1)) !important; }
+
+/* Native Mac controls occupy the same 52 × 23 header area as the reference.
+   Keep the custom control IDs available for the portable fallback. */
+html[data-native-mini-controls="true"] body.compact-mode #compactMacWindowControls { display: flex !important; visibility: hidden; flex: 0 0 52px !important; width: 52px !important; min-width: 52px !important; max-width: 52px !important; height: 23px !important; padding: 0 !important; }
+html[data-native-mini-controls="true"] body.compact-mode .topbar #compactOpenRecordingsFolderButton { display: none !important; }
+html[data-native-mini-controls="true"] body.compact-mode .window-drag-handle { flex: 0 0 0px !important; min-width: 0 !important; width: 0; }
+
+/* Both states use the same 144 px action area, removing the empty middle gap. */
+body.compact-mode .compact-record-row,
+body.compact-mode.compact-recording-active .compact-record-row { display: grid !important; grid-template-columns: minmax(0,1fr) 144px; gap: 6px !important; }
+body.compact-mode .compact-action-cluster,
+body.compact-mode:not(.compact-recording-active) .compact-action-cluster,
+body.compact-mode.compact-recording-active .compact-action-cluster { display: flex !important; justify-content: flex-end !important; width: 144px !important; gap: 4px !important; }
+body.compact-mode .compact-record-kind-control,
+body.compact-mode:not(.compact-recording-active) .compact-record-kind-control { width: 80px; flex: 0 0 80px; grid-template-columns: repeat(2,36px) !important; gap: 3px !important; }
+body.compact-mode .compact-record-kind-button { display: flex; align-items: center; justify-content: center; gap: 3px; width: 36px !important; min-width: 36px !important; padding: 0 2px; }
+body.compact-mode .compact-record-kind-button svg { flex: 0 0 14px; width: 14px !important; height: 14px !important; }
+body.compact-mode #compactStartButton,
+body.compact-mode.compact-recording-active #compactStartButton { flex: 0 0 60px !important; width: 60px !important; min-width: 60px !important; max-width: 60px !important; }
+body.compact-mode.compact-recording-active .compact-action-cluster #compactRecordingMicToggle { display: inline-grid; align-items: center; justify-content: center; flex: 0 0 24px; width: 24px; min-width: 24px; height: 24px; min-height: 24px; border: 1px solid var(--line); background: transparent; border-radius: 6px; color: var(--accent); }
+body.compact-mode.compact-recording-active .compact-action-cluster #compactRecordingMicToggle.hidden { display: none !important; }
+body.compact-mode.compact-recording-active .compact-action-cluster #compactRecordingMicToggle.is-muted { color: #bb6368; }
+body.compact-mode .compact-record-time,
+body.compact-mode:not(.compact-recording-active) .compact-record-time,
+body.compact-mode.compact-recording-active .compact-record-time { display: grid !important; grid-template-columns: 4px auto minmax(0,1fr) 4px !important; grid-template-rows: 9px 13px !important; gap: 0 3px !important; width: 100% !important; min-width: 0 !important; height: 22px; }
+body.compact-mode .compact-record-time .record-dot { grid-row: 1 !important; grid-column: 1 !important; }
+body.compact-mode .compact-record-state,
+body.compact-mode.compact-recording-active .compact-record-state { grid-row: 1 !important; grid-column: 2 !important; font-size: 7px !important; letter-spacing: 0 !important; line-height: 9px !important; }
+body.compact-mode #compactRecordingDuration,
+body.compact-mode.compact-recording-active #compactRecordingDuration { grid-row: 2 !important; grid-column: 1 / -1 !important; margin: 0 !important; font-size: 12px !important; line-height: 13px !important; text-align: right; }
+body.compact-mode #compactHealthIndicator,
+body.compact-mode.compact-recording-active #compactHealthIndicator { grid-row: 1 !important; grid-column: 4 !important; }
+.compact-recording-kind-indicator { display: none; }
+body.compact-mode.compact-recording-active .compact-record-time { grid-template-columns: 10px auto minmax(0,1fr) 4px !important; }
+body.compact-mode.compact-recording-active .compact-record-time .record-dot { display: none; }
+body.compact-mode.compact-recording-active .compact-recording-kind-indicator { display: inline-grid; grid-row: 1; grid-column: 1; align-items: center; width: 10px; height: 9px; color: var(--text-2); }
+.compact-recording-kind-indicator svg { display: block; width: 9px; height: 9px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+.compact-kind-indicator-audio { display: none; }
+body:has(#compactRecordingKindAudioButton[aria-pressed="true"]) .compact-kind-indicator-video { display: none; }
+body:has(#compactRecordingKindAudioButton[aria-pressed="true"]) .compact-kind-indicator-audio { display: block; }
+body.compact-mode .recording-bookmark-text-editor,
+html[data-theme="light"] body.compact-mode .recording-bookmark-text-editor { left: 9px; right: 9px; }
+
+/* v0.2.138 — fixed action geometry and the reference's quiet pastel groups. */
+html[data-theme="light"] body.compact-mode { --mini-shell-bg: #f4f4f6; --mini-capture-bg: #e9f2ff; --mini-capture-line: #ccd7e5; --mini-meter-bg: #eaf8f0; --mini-meter-line: #ccd9d2; --mini-meter-ink: #3f6b57; --mini-video-ink: #367aa4; --mini-audio-ink: #367451; }
+html[data-theme="dark"] body.compact-mode { --mini-shell-bg: #292a2e; --mini-capture-bg: #293d52; --mini-capture-line: #44566b; --mini-meter-bg: #273b32; --mini-meter-line: #41564a; --mini-meter-ink: #aacdb8; --mini-video-ink: #96c8ef; --mini-audio-ink: #a6d8b7; }
+html[data-theme] body.compact-mode .app-shell { background: var(--mini-shell-bg) !important; }
+body.compact-mode .compact-recorder-card,
+body.compact-mode.compact-recording-active .compact-recorder-card { grid-template-rows: 24px 11px 10px; }
+html[data-theme] body.compact-mode .compact-record-time,
+html[data-theme] body.compact-mode.compact-recording-active .compact-record-time { height: 24px; padding: 0 4px; border: 1px solid var(--mini-capture-line); border-radius: 6px; background: var(--mini-capture-bg); grid-template-rows: 8px 12px !important; align-content: center; }
+html[data-theme] body.compact-mode .compact-record-state { line-height: 8px !important; }
+html[data-theme] body.compact-mode #compactRecordingDuration { line-height: 12px !important; }
+html[data-theme] body.compact-mode #compactRecordingKindControl .compact-record-kind-button { transform: none !important; transition: background-color .12s ease, color .12s ease; box-shadow: none !important; }
+html[data-theme] body.compact-mode #compactRecordingKindVideoButton { color: var(--mini-video-ink) !important; background: var(--mini-capture-bg) !important; }
+html[data-theme] body.compact-mode #compactRecordingKindAudioButton { color: var(--mini-audio-ink) !important; background: var(--mini-meter-bg) !important; }
+html[data-theme] body.compact-mode #compactRecordingKindControl .compact-record-kind-button[aria-pressed="true"] { box-shadow: inset 0 0 0 1px currentColor !important; }
+html[data-theme] body.compact-mode #compactRecordingKindControl .compact-record-kind-button:hover:not(:disabled) { filter: brightness(.98); }
+html[data-theme] body.compact-mode .compact-live-audio,
+html[data-theme] body.compact-mode:not(.compact-recording-active) .compact-live-audio,
+html[data-theme] body.compact-mode.compact-recording-active .compact-live-audio { height: 11px; min-height: 11px; padding: 0 3px; border: 1px solid var(--mini-meter-line); border-radius: 4px; background: var(--mini-meter-bg); color: var(--mini-meter-ink); }
+html[data-theme] body.compact-mode .compact-live-meter { min-width: 0; height: 9px; }
+
+/* Hover and press never resize or move Start/Stop under the pointer. */
+html[data-theme] body.compact-mode #compactStartButton,
+html[data-theme] body.compact-mode #compactStartButton:is(:hover,:focus,:focus-visible,:active,:disabled),
+html[data-theme] body.compact-mode.compact-recording-active #compactStartButton,
+html[data-theme] body.compact-mode.compact-recording-active #compactStartButton:is(:hover,:focus,:focus-visible,:active,:disabled) { box-sizing: border-box; flex: 0 0 60px !important; width: 60px !important; min-width: 60px !important; max-width: 60px !important; height: 24px !important; min-height: 24px !important; max-height: 24px !important; margin: 0 !important; padding: 0 7px !important; border-width: 1px !important; position: static !important; inset: auto !important; align-self: center; transform: none !important; animation: none !important; transition: background-color .12s ease, color .12s ease, border-color .12s ease !important; }
+body.compact-mode #compactStartButton *,
+body.compact-mode #compactRecordingKindControl .compact-record-kind-button * { pointer-events: none; }
+
+/* Opaque fallback hints remain readable if native hints are unavailable. */
+.fast-tooltip,
+html[data-theme="light"] .fast-tooltip { max-width: min(280px,calc(100vw - 16px)); padding: 6px 9px; border: 1px solid var(--line-strong); border-radius: 7px; background: #292a2e !important; color: #f2f2f4; box-shadow: 0 3px 12px rgba(0,0,0,.18); font-size: 11px; line-height: 1.35; transition: none; }
+html[data-theme="light"] .fast-tooltip { background: #fff !important; color: #252629; }
+.fast-tooltip.native-tooltip-description { display: block; position: fixed; width: 1px; height: 1px; padding: 0; border: 0; overflow: hidden; clip-path: inset(50%); opacity: 1; }
+
+/* Studio Desk keeps review tools beside the player without changing capture. */
+body:not(.compact-mode) #mainLayout.playback-mode #workspacePanel { overflow: clip; }
+body:not(.compact-mode) #playbackView {
+  --desk-surface: #25292f;
+  --desk-muted-surface: #20242a;
+  --desk-line: #3a414b;
+  --desk-ink: #edf1f5;
+  --desk-muted: #a3adba;
+  --desk-blue: #2d425a;
+  --desk-blue-ink: #a8d1fa;
+  --desk-mint: #293d36;
+  --desk-mint-ink: #add3bf;
+}
+html[data-theme="light"] body:not(.compact-mode) #playbackView {
+  --desk-surface: #fff;
+  --desk-muted-surface: #f4f6f8;
+  --desk-line: #dde3e9;
+  --desk-ink: #263240;
+  --desk-muted: #687786;
+  --desk-blue: #e8f2fd;
+  --desk-blue-ink: #285e8d;
+  --desk-mint: #eaf5ef;
+  --desk-mint-ink: #416c55;
+}
+body:not(.compact-mode) #playbackView .playback-heading { margin-bottom: 10px; }
+body:not(.compact-mode) #playbackView :is(.button.secondary,.playback-more-toggle,select,input[type="search"]) { color: var(--desk-ink) !important; background: var(--desk-surface) !important; border-color: var(--desk-line) !important; box-shadow: none !important; }
+body:not(.compact-mode) #playbackView :is(.button.secondary,.playback-more-toggle):hover:not(:disabled) { background: var(--desk-muted-surface) !important; }
+body:not(.compact-mode) #playbackView .button.primary { color: var(--desk-blue-ink) !important; background: var(--desk-blue) !important; border-color: color-mix(in srgb,var(--desk-blue-ink) 22%,transparent) !important; box-shadow: none !important; }
+body:not(.compact-mode) #playbackView .playback-layout { --playlist-width: 260px; gap: 6px; align-items: start; }
+body:not(.compact-mode) #playbackView .recording-browser {
+  display: flex; flex-direction: column; max-height: calc(100vh - 260px);
+  padding: 12px; border: 1px solid var(--desk-line); border-radius: 12px;
+  background: var(--desk-muted-surface); box-shadow: none;
+}
+body:not(.compact-mode) #playbackView .recording-browser-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+body:not(.compact-mode) #playbackView .recording-browser-heading strong { font-size: 13px; font-weight: 650; color: var(--desk-ink); }
+body:not(.compact-mode) #playbackView .recording-library-search { min-height: 32px; border-color: var(--desk-line); border-radius: 8px; background: var(--desk-surface); }
+body:not(.compact-mode) #playbackView .recording-library-search input { min-width: 0; padding: 7px 24px 7px 28px; font-size: 11px; }
+body:not(.compact-mode) #playbackView .recording-quick-filters { flex-wrap: wrap; gap: 4px; margin-block: 9px; }
+body:not(.compact-mode) #playbackView .recording-filter-chip { min-height: 26px; padding: 4px 6px; font-size: 10px; border-radius: 7px; border-color: transparent; color: var(--desk-muted); background: transparent; }
+body:not(.compact-mode) #playbackView .recording-filter-chip.active { color: var(--desk-blue-ink); border-color: color-mix(in srgb,var(--desk-blue-ink) 16%,transparent); background: var(--desk-blue); }
+body:not(.compact-mode) #playbackView .recording-organizer { margin: 0 0 9px; padding: 0 0 10px; border: 0; border-bottom: 1px solid var(--desk-line); background: transparent; gap: 6px; }
+body:not(.compact-mode) #playbackView .recording-filter-label { flex: 1; min-width: 0; color: var(--desk-muted); font-size: 10px; }
+body:not(.compact-mode) #playbackView .recording-filter-label select { width: 100%; min-width: 0; padding: 5px 7px; font-size: 10px; border-radius: 7px; }
+body:not(.compact-mode) #playbackView .recording-organizer-actions { align-self: end; }
+body:not(.compact-mode) #playbackView .recording-sort-row { display: flex; align-items: center; gap: 8px; margin: 0 0 9px; color: var(--desk-muted); font-size: 10px; }
+body:not(.compact-mode) #playbackView .recording-sort-row select { flex: 1; min-width: 0; width: 100%; min-height: 29px; padding: 5px 7px; border-radius: 7px; font-size: 10px; }
+body:not(.compact-mode) #playbackView .recording-list { flex: 1; min-height: 180px; overflow: auto; padding: 0; border: 0; background: transparent; }
+body:not(.compact-mode) #playbackView .recording-date-section .recording-section-header { padding: 8px 3px 5px; background: var(--desk-muted-surface); color: var(--desk-muted); font-size: 9px; letter-spacing: .03em; }
+body:not(.compact-mode) #playbackView .recording-item { margin-bottom: 5px; padding: 7px; border-radius: 9px; border: 1px solid transparent; background: var(--desk-surface); box-shadow: none; }
+body:not(.compact-mode) #playbackView .recording-item.active { border-color: color-mix(in srgb,var(--desk-blue-ink) 24%,transparent); background: var(--desk-blue); }
+body:not(.compact-mode) #playbackView .recording-item-line { grid-template-columns: minmax(0,1fr) 24px 24px 24px; gap: 2px; }
+body:not(.compact-mode) #playbackView .recording-item-line .recording-select { padding: 3px 2px; }
+body:not(.compact-mode) #playbackView .recording-item-name { font-size: 11px; line-height: 1.4; color: var(--desk-ink); }
+body:not(.compact-mode) #playbackView .recording-item-meta { font-size: 9px; color: var(--desk-muted); }
+body:not(.compact-mode) #playbackView :is(.recording-favorite-button,.recording-rename-button,.recording-delete-button) { width: 24px; min-width: 24px; height: 24px; min-height: 24px; border-radius: 6px; }
+body:not(.compact-mode) #playbackView .recording-category-select { width: 76px; min-width: 76px; max-width: 76px; height: 24px; min-height: 24px; padding: 2px 4px; font-size: 9px; border-radius: 6px; }
+body:not(.compact-mode) #playbackView .recording-item.batch-mode .recording-item-line { grid-template-columns: 18px minmax(0,1fr) 24px 24px 24px; }
+body:not(.compact-mode) #playbackView .playback-stage {
+  display: block; padding: 0;
+}
+body:not(.compact-mode) #playbackView #playbackDetails:not(.hidden) { display: grid; grid-template-columns: minmax(0,1fr) 304px; grid-template-rows: auto; align-items: start; gap: 12px; }
+body:not(.compact-mode) #playbackView .playback-player-column { display: flex; flex-direction: column; min-width: 0; gap: 10px; }
+body:not(.compact-mode) #playbackView .playback-title-row { grid-column: 1; grid-row: 1; display: flex; flex-direction: column; align-items: stretch; gap: 7px; margin: 0; padding: 2px 1px; }
+body:not(.compact-mode) #playbackView .playback-name-group { justify-content: space-between; min-width: 0; gap: 8px; }
+body:not(.compact-mode) #playbackView #playbackFileName { font-size: 14px; line-height: 1.4; color: var(--desk-ink); }
+body:not(.compact-mode) #playbackView .playback-badges { flex-wrap: wrap; justify-content: flex-start; gap: 5px; }
+body:not(.compact-mode) #playbackView .mini-badge { font-size: 9px; padding: 3px 6px; border-radius: 5px; }
+body:not(.compact-mode) #playbackView #playbackMediaBadge { color: var(--desk-blue-ink); background: var(--desk-blue); border-color: transparent; }
+body:not(.compact-mode) #playbackView .video-player-shell,
+body:not(.compact-mode) #playbackView .video-player-shell.chapters-open { grid-column: 1; grid-row: 2; display: block; min-width: 0; width: 100%; border: 1px solid var(--desk-line); border-radius: 11px; box-shadow: none; }
+body:not(.compact-mode) #playbackView .video-player-shell.video-player-mode .video-viewport { width: 100%; min-height: 0; aspect-ratio: var(--playback-aspect,16/9); }
+body:not(.compact-mode) #playbackView .video-player-shell.video-player-mode #playbackVideo { width: 100%; height: 100%; min-height: 0; max-height: none; object-fit: contain; }
+body:not(.compact-mode) #playbackView .video-player-shell.audio-only-player .video-viewport { min-height: 148px; background: var(--desk-mint); color: var(--desk-mint-ink); }
+body:not(.compact-mode) #playbackView .audio-only-player-state { padding: 20px; color: var(--desk-mint-ink); }
+body:not(.compact-mode) #playbackView .audio-only-player-state strong { color: var(--desk-ink); }
+body:not(.compact-mode) #playbackView .audio-only-player-state span { color: var(--desk-muted); }
+body:not(.compact-mode) #playbackView .player-toolbar { padding: 9px; background: var(--desk-muted-surface); color: var(--desk-ink); border-top-color: var(--desk-line); overflow: visible !important; }
+body:not(.compact-mode) #playbackView .player-status-row { min-height: 0; margin: 0; }
+body:not(.compact-mode) #playbackView .player-status:empty { display: none; }
+body:not(.compact-mode) #playbackView .player-progress-row { gap: 5px; }
+body:not(.compact-mode) #playbackView .player-time { min-width: 47px; font-size: 9px; color: var(--desk-muted); }
+body:not(.compact-mode) #playbackView .player-control-row,
+body:not(.compact-mode) #playbackView .video-player-shell.chapters-open .player-control-row { display: flex !important; flex-direction: row !important; flex-wrap: wrap !important; align-items: center !important; justify-content: space-between !important; min-width: 0 !important; min-height: 0 !important; gap: 7px 4px !important; padding: 8px 0 0 !important; margin: 0; overflow: visible; }
+body:not(.compact-mode) #playbackView :is(.navigation-controls,.playback-tool-controls,.audio-controls),
+body:not(.compact-mode) #playbackView .video-player-shell.chapters-open :is(.navigation-controls,.playback-tool-controls,.audio-controls) { display: flex !important; flex-wrap: nowrap !important; gap: 3px !important; padding: 0 !important; border: 0 !important; background: transparent !important; box-shadow: none !important; }
+body:not(.compact-mode) #playbackView .primary-transport-controls,
+body:not(.compact-mode) #playbackView .video-player-shell.chapters-open .primary-transport-controls { order: 1; min-width: 0 !important; gap: 3px !important; padding: 0; justify-content: flex-start !important; }
+body:not(.compact-mode) #playbackView .playback-tool-controls,
+body:not(.compact-mode) #playbackView .video-player-shell.chapters-open .playback-tool-controls { order: 2; }
+body:not(.compact-mode) #playbackView .right-player-controls,
+body:not(.compact-mode) #playbackView .video-player-shell.chapters-open .right-player-controls { order: 3; min-width: 0 !important; padding: 0; margin: 0; }
+body:not(.compact-mode) #playbackView .navigation-controls,
+body:not(.compact-mode) #playbackView .video-player-shell.chapters-open .navigation-controls { order: 4; flex: 1 0 100%; justify-content: flex-start !important; padding-top: 6px !important; border-top: 1px solid var(--desk-line) !important; }
+body:not(.compact-mode) #playbackView .player-control-row :is(.player-icon-button,.player-caption-button,.seek-button),
+body:not(.compact-mode) #playbackView .video-player-shell.chapters-open .player-control-row :is(.player-icon-button,.player-caption-button,.seek-button) { width: 25px !important; min-width: 25px !important; height: 27px !important; min-height: 27px !important; padding: 0 !important; border-radius: 6px !important; color: var(--desk-ink); background: transparent; box-shadow: none; }
+body:not(.compact-mode) #playbackView .player-control-row :is(.player-icon-button,.player-caption-button,.seek-button):hover:not(:disabled) { background: var(--desk-blue) !important; color: var(--desk-blue-ink); }
+body:not(.compact-mode) #playbackView .player-control-row .player-icon-button svg,
+body:not(.compact-mode) #playbackView .video-player-shell.chapters-open .player-control-row .player-icon-button svg { width: 15px !important; height: 15px !important; }
+body:not(.compact-mode) #playbackView .transport-play,
+body:not(.compact-mode) #playbackView .video-player-shell.chapters-open .transport-play { width: 34px !important; min-width: 34px !important; flex: 0 0 34px !important; height: 30px !important; min-height: 30px !important; padding: 0; border-radius: 8px !important; background: var(--desk-blue) !important; color: var(--desk-blue-ink) !important; border: 1px solid color-mix(in srgb,var(--desk-blue-ink) 20%,transparent); box-shadow: none !important; }
+body:not(.compact-mode) #playbackView .transport-play:is(:hover,:active) { color: var(--desk-blue-ink) !important; background: var(--desk-blue) !important; transform: none !important; }
+body:not(.compact-mode) #playbackView .primary-seek-button,
+body:not(.compact-mode) #playbackView .video-player-shell.chapters-open .primary-seek-button { width: 30px !important; min-width: 30px !important; font-size: 10px !important; color: var(--desk-ink) !important; background: transparent !important; text-shadow: none !important; }
+body:not(.compact-mode) #playbackView .player-snapshot-button { color: var(--desk-blue-ink) !important; background: var(--desk-blue) !important; }
+body:not(.compact-mode) #playbackView .fine-seek-toggle { color: var(--desk-ink) !important; background: transparent !important; text-shadow: none !important; }
+body:not(.compact-mode) #playbackView .seek-options-menu { color: var(--desk-ink); background: var(--desk-surface) !important; border-color: var(--desk-line) !important; }
+body:not(.compact-mode) #playbackView .seek-options-menu button { color: var(--desk-ink) !important; }
+body:not(.compact-mode) #playbackView .player-icon-button.bookmark-nav-button { color: var(--desk-mint-ink) !important; background: var(--desk-mint) !important; border-color: transparent !important; }
+body:not(.compact-mode) #playbackView .player-control-row .volume-slider,
+body:not(.compact-mode) #playbackView .video-player-shell.chapters-open .player-control-row .volume-slider { width: 48px !important; min-width: 48px !important; margin: 0; }
+body:not(.compact-mode) #playbackView .player-control-row .player-speed,
+body:not(.compact-mode) #playbackView .video-player-shell.chapters-open .player-control-row .player-speed { width: 49px !important; min-width: 49px !important; height: 27px !important; min-height: 27px !important; padding: 2px 5px; font-size: 10px; }
+body:not(.compact-mode) #playbackView .playback-timeline-toggle[aria-pressed="true"] { background: var(--desk-blue) !important; color: var(--desk-blue-ink); border-color: transparent !important; }
+body:not(.compact-mode) #playbackView .playback-actions-row { grid-column: 1; grid-row: 3; display: flex; align-items: center; justify-content: flex-start; flex-wrap: wrap; gap: 6px; margin: 0; padding: 1px 0; }
+body:not(.compact-mode) #playbackView .playback-actions-row .button { min-height: 28px; padding: 5px 8px; font-size: 10px; border-radius: 7px; box-shadow: none; }
+body:not(.compact-mode) #playbackView .audio-export-format { height: 28px; min-height: 28px; width: 61px; min-width: 61px; font-size: 10px; padding: 3px 6px; border-radius: 7px; }
+body:not(.compact-mode) #playbackView .playback-inspector { grid-column: 2; grid-row: 1; display: flex; flex-direction: column; min-width: 0; max-height: calc(100vh - 260px); border: 1px solid var(--desk-line); border-radius: 12px; background: var(--desk-surface); overflow: hidden; }
+body:not(.compact-mode) #playbackView .playback-inspector-tabs { display: grid; flex-shrink: 0; grid-template-columns: repeat(2,minmax(0,1fr)); gap: 4px; padding: 7px; border-bottom: 1px solid var(--desk-line); background: var(--desk-muted-surface); }
+body:not(.compact-mode) #playbackView .playback-inspector-tabs button { min-width: 0; min-height: 29px; padding: 5px 7px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--desk-muted); font: inherit; font-size: 11px; cursor: pointer; }
+body:not(.compact-mode) #playbackView .playback-inspector-tabs button[aria-selected="true"] { border-color: color-mix(in srgb,var(--desk-blue-ink) 20%,transparent); background: var(--desk-blue); color: var(--desk-blue-ink); font-weight: 600; }
+body:not(.compact-mode) #playbackView .playback-inspector-tabs button:focus-visible { outline: 2px solid var(--desk-blue-ink); outline-offset: -2px; }
+body:not(.compact-mode) #playbackView .playback-inspector-tool { flex: 1; min-width: 0; min-height: 0; padding: 12px; overflow: auto; }
+body:not(.compact-mode) #playbackView .playback-inspector-tool :is(.playback-transcript-section,.insights-panel,.trim-panel) { margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; }
+body:not(.compact-mode) #playbackView .transcript-heading { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 7px; margin-bottom: 10px; }
+body:not(.compact-mode) #playbackView .transcript-heading h2 { font-size: 12px; color: var(--desk-ink); }
+body:not(.compact-mode) #playbackView .transcript-view-toolbar { gap: 6px; padding: 0 0 9px; flex-wrap: wrap; border-bottom-color: var(--desk-line); }
+body:not(.compact-mode) #playbackView .transcript-view-label { font-size: 10px; }
+body:not(.compact-mode) #playbackView .transcript-view-segmented { min-width: 0; max-width: 100%; padding: 2px; background: var(--desk-muted-surface); border-color: var(--desk-line); border-radius: 7px; }
+body:not(.compact-mode) #playbackView .transcript-view-button { min-height: 26px; padding: 4px 8px; font-size: 10px; border-radius: 5px; }
+body:not(.compact-mode) #playbackView .transcript-view-button.active { color: var(--desk-blue-ink) !important; background: var(--desk-blue) !important; box-shadow: none !important; }
+body:not(.compact-mode) #playbackView .speaker-detection-status { flex: 1 0 100%; font-size: 9px; color: var(--desk-muted); }
+body:not(.compact-mode) #playbackView .speaker-correction-heading { flex-wrap: wrap; gap: 6px; }
+body:not(.compact-mode) #playbackView .speaker-correction-row { grid-template-columns: minmax(0,1fr) auto; gap: 6px; padding-block: 7px; border-bottom: 1px solid var(--desk-line); }
+body:not(.compact-mode) #playbackView .speaker-correction-row .speaker-identity { grid-column: 1 / -1; }
+body:not(.compact-mode) #playbackView .speaker-correction-row :is(input,select) { width: 100%; min-width: 0; padding: 6px; color: var(--desk-ink); border-color: var(--desk-line); background: var(--desk-surface); }
+body:not(.compact-mode) #playbackView .speaker-correction-row .speaker-merge-select { display: block !important; }
+body:not(.compact-mode) #playbackView .transcript-status { margin: 8px 0; font-size: 10px; line-height: 1.5; color: var(--desk-muted); }
+body:not(.compact-mode) #playbackView .transcript-actions { display: flex; flex-wrap: wrap; gap: 5px; margin-block: 9px; }
+body:not(.compact-mode) #playbackView .playback-inspector-tool .button { min-height: 27px; padding: 5px 7px; font-size: 10px; border-radius: 6px; box-shadow: none; }
+body:not(.compact-mode) #playbackView .transcript-search-sticky { top: 0; padding: 0 0 8px; background: var(--desk-surface); }
+body:not(.compact-mode) #playbackView .transcript-search-row { min-width: 0; background: var(--desk-muted-surface); border-color: var(--desk-line); border-radius: 7px; }
+body:not(.compact-mode) #playbackView .transcript-search-row input { min-width: 0; padding: 7px 24px 7px 27px; font-size: 10px; }
+body:not(.compact-mode) #playbackView .transcript-search-navigation { gap: 5px; flex-wrap: wrap; }
+body:not(.compact-mode) #playbackView .transcript-search-hint { flex: 1 0 100%; font-size: 9px; line-height: 1.45; }
+body:not(.compact-mode) #playbackView .transcript-search-count { font-size: 9px; color: var(--desk-muted); }
+body:not(.compact-mode) #playbackView :is(.transcript-raw-view,.transcript-cue-list,.transcript-speaker-list) { min-height: 140px; max-height: none; font-size: 11px; line-height: 1.65; border-color: var(--desk-line); background: transparent; }
+body:not(.compact-mode) #playbackView .insights-heading { display: flex; align-items: flex-start; flex-wrap: wrap; gap: 8px; padding: 0 0 10px; }
+body:not(.compact-mode) #playbackView .insights-title-copy { flex: 1 0 100%; }
+body:not(.compact-mode) #playbackView .insights-title-copy strong { color: var(--desk-ink); font-size: 12px; }
+body:not(.compact-mode) #playbackView .insights-title-copy span { color: var(--desk-muted); font-size: 10px; line-height: 1.5; }
+body:not(.compact-mode) #playbackView .insights-heading-actions { display: flex; flex-wrap: wrap; gap: 5px; }
+body:not(.compact-mode) #playbackView .knowledge-collapse-action-button { min-height: 27px; font-size: 10px; }
+body:not(.compact-mode) #playbackView .insights-content { padding: 0; }
+body:not(.compact-mode) #playbackView .insight-section-block,
+body:not(.compact-mode) #playbackView .insight-card { padding: 9px; border-color: var(--desk-line); border-radius: 8px; background: var(--desk-muted-surface); }
+body:not(.compact-mode) #playbackView .knowledge-collapse-copy strong { font-size: 11px; }
+body:not(.compact-mode) #playbackView .knowledge-collapse-copy span { font-size: 9px; line-height: 1.5; }
+body:not(.compact-mode) #playbackView .trim-heading { display: grid; gap: 4px; margin-bottom: 12px; }
+body:not(.compact-mode) #playbackView .bookmark-range-export { display: grid; gap: 9px; margin: 0 0 16px; padding: 0 0 15px; border-bottom: 1px solid var(--desk-line); }
+body:not(.compact-mode) #playbackView .bookmark-range-heading { display: grid; gap: 4px; }
+body:not(.compact-mode) #playbackView .bookmark-range-heading strong { color: var(--desk-ink); font-size: 12px; }
+body:not(.compact-mode) #playbackView .bookmark-range-heading span { color: var(--desk-muted); font-size: 10px; line-height: 1.5; }
+body:not(.compact-mode) #playbackView .bookmark-range-export label { display: grid; gap: 4px; min-width: 0; color: var(--desk-muted); font-size: 10px; }
+body:not(.compact-mode) #playbackView .bookmark-range-export select { min-width: 0; width: 100%; min-height: 30px; padding: 6px 7px; font-size: 10px; border-radius: 7px; }
+body:not(.compact-mode) #playbackView .bookmark-range-export p { margin: 0; }
+body:not(.compact-mode) #playbackView .bookmark-range-status { overflow-wrap: anywhere; }
+body:not(.compact-mode) #playbackView .bookmark-range-status[data-state="error"] { color: #ba5454; }
+html[data-theme="dark"] body:not(.compact-mode) #playbackView .bookmark-range-status[data-state="error"] { color: #f0a5a5; }
+body:not(.compact-mode) #playbackView .trim-heading strong { font-size: 12px; color: var(--desk-ink); }
+body:not(.compact-mode) #playbackView .trim-heading span { font-size: 10px; line-height: 1.5; color: var(--desk-muted); }
+body:not(.compact-mode) #playbackView .trim-precision-controls { display: grid; grid-template-columns: 1fr; gap: 8px; }
+body:not(.compact-mode) #playbackView .trim-zoom-control { min-width: 0; font-size: 10px; }
+body:not(.compact-mode) #playbackView .trim-zoom-control input { min-width: 0; }
+body:not(.compact-mode) #playbackView .trim-snap-control { display: flex; justify-content: flex-start; font-size: 10px; }
+body:not(.compact-mode) #playbackView .trim-snap-control input { flex: 0 0 14px; width: 14px; height: 14px; min-height: 14px; margin: 0; }
+body:not(.compact-mode) #playbackView .trim-controls { display: grid; grid-template-columns: 1fr; align-items: start; gap: 8px; }
+body:not(.compact-mode) #playbackView .trim-boundary-control { display: flex; justify-content: space-between; min-width: 0; }
+body:not(.compact-mode) #playbackView .trim-boundary-control code { padding: 5px 7px; font-size: 10px; }
+body:not(.compact-mode) #playbackView .trim-save-button { width: 100%; }
+body:not(.compact-mode) #playbackView .multi-cut-heading { display: grid; gap: 7px; }
+body:not(.compact-mode) #playbackView .multi-cut-heading strong { font-size: 11px; }
+body:not(.compact-mode) #playbackView .multi-cut-heading span { font-size: 10px; line-height: 1.5; }
+body:not(.compact-mode) #playbackView .edit-safety-badge { justify-self: start; color: var(--desk-mint-ink); border-color: transparent; background: var(--desk-mint); }
+body:not(.compact-mode) #playbackView .multi-cut-actions { flex-wrap: wrap; gap: 5px; }
+body:not(.compact-mode) #playbackView .edit-summary { font-size: 10px; line-height: 1.5; }
+body:not(.compact-mode) #playbackView .playback-chapter-sidebar { display: flex; min-width: 0; max-height: none; border: 0; color: var(--desk-ink); background: transparent; }
+body:not(.compact-mode) #playbackView .playback-chapter-sidebar-header { padding: 0 0 10px; border-bottom-color: var(--desk-line); }
+body:not(.compact-mode) #playbackView .playback-chapter-sidebar-header strong { font-size: 12px; }
+body:not(.compact-mode) #playbackView .playback-chapter-sidebar-header span { font-size: 10px; color: var(--desk-muted); }
+body:not(.compact-mode) #playbackView .playback-chapter-sidebar-list { padding: 9px 0 0; }
+body:not(.compact-mode) #playbackView .playback-chapter-row { padding: 8px 6px; border-radius: 7px; }
+body:not(.compact-mode) #playbackView .playback-chapter-row time { font-size: 10px; color: var(--desk-muted); }
+body:not(.compact-mode) #playbackView .playback-chapter-row .timeline-item-copy strong { font-size: 11px; }
+body:not(.compact-mode) #playbackView .playback-chapter-row .timeline-item-copy small { font-size: 9px; color: var(--desk-muted); }
+body:not(.compact-mode) #playbackView .playback-chapter-jump time { font-size: 10px; color: var(--desk-muted); }
+body:not(.compact-mode) #playbackView .playback-chapter-copy strong { font-size: 11px; }
+body:not(.compact-mode) #playbackView .playback-chapter-copy small { font-size: 9px; color: var(--desk-muted); }
+body:not(.compact-mode) #playbackView .playback-chapter-jump { grid-template-columns: 17px 49px minmax(0,1fr); gap: 5px; padding: 4px 0; }
+body:not(.compact-mode) #playbackView #playbackEmpty { grid-column: 1 / -1; grid-row: 1; min-height: 330px; border-radius: 12px; border-color: var(--desk-line); background: var(--desk-muted-surface); color: var(--desk-muted); }
+body:not(.compact-mode) #playbackView #stickyPlaybackControls { grid-column: 1; grid-row: 1 / -1; align-self: start; min-width: 0; z-index: 60; }
+body:not(.compact-mode) #playbackView .helper { font-size: 10px; line-height: 1.5; color: var(--desk-muted); }
+body:not(.compact-mode) #playbackView .video-player-shell:fullscreen,
+body:not(.compact-mode).player-fullscreen #playbackView .video-player-shell { display: flex; width: 100%; height: 100%; border: 0; border-radius: 0; }
+body:not(.compact-mode) #playbackView .video-player-shell:fullscreen .video-viewport,
+body:not(.compact-mode).player-fullscreen #playbackView .video-viewport { flex: 1; aspect-ratio: auto; }
+/* The existing native fullscreen view can still keep Timeline beside the video. */
+body:not(.compact-mode).player-fullscreen #playbackView .playback-inspector { display: none; }
+body:not(.compact-mode).player-fullscreen #playbackView .playback-inspector[data-active-tool="timeline"] { display: block; position: fixed; top: 0; right: 0; z-index: 10001; width: clamp(250px,22vw,340px); height: 100vh; max-height: none; border: 0; border-left: 1px solid var(--desk-line); border-radius: 0; }
+body:not(.compact-mode).player-fullscreen #playbackView .playback-inspector-tabs { display: none; }
+body:not(.compact-mode).player-fullscreen #playbackView #playbackTimelineTool { height: 100%; max-height: none; }
+body:not(.compact-mode).player-fullscreen #playbackView .playback-inspector .playback-chapter-sidebar { display: flex !important; height: 100%; }
+body:not(.compact-mode).player-fullscreen #playbackView .playback-chapter-sidebar-list { min-height: 0; overflow: auto; }
+@media (max-width: 1180px) {
+  body:not(.compact-mode) #playbackView #playbackDetails:not(.hidden) { grid-template-columns: minmax(0,1fr); grid-template-rows: auto auto; }
+  body:not(.compact-mode) #playbackView .playback-inspector { grid-column: 1; grid-row: 2; max-height: 660px; }
+  body:not(.compact-mode) #playbackView .playback-inspector-tabs { grid-template-columns: repeat(4,minmax(0,1fr)); }
+  body:not(.compact-mode) #playbackView .playback-inspector-tool { max-height: 600px; }
+}
+@media (max-width: 900px) {
+  body:not(.compact-mode) #playbackView .playback-layout { grid-template-columns: minmax(0,1fr); }
+  body:not(.compact-mode) #playbackView .playback-splitter { display: none; }
+  body:not(.compact-mode) #playbackView .recording-browser { max-height: none; }
+  body:not(.compact-mode) #playbackView .recording-list { min-height: 0; max-height: 260px; }
+}

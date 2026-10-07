@@ -107,6 +107,29 @@ function sha256(file) {
 function shellQuote(value) { return `'${String(value).replace(/'/g, `'"'"'`)}'`; }
 function psQuote(value) { return `'${String(value).replace(/'/g, "''")}'`; }
 
+// Windows starts a cached, packaged executable, while macOS loads the shared
+// app directory through the signed Electron host. Updates must always replace
+// that shared source folder rather than the Windows executable's resources.
+function resolvePortableRoot() {
+  const isPortableRoot = (candidate) => {
+    if (!candidate || !path.isAbsolute(candidate)) return false;
+    const manifest = readJson(path.join(candidate, 'app', 'package.json'), {});
+    return manifest.name === 'pulsestudio' && fs.existsSync(path.join(candidate, 'app', 'main.js'));
+  };
+  const configuredRoot = process.env.PULSESTUDIO_PORTABLE_ROOT;
+  if (isPortableRoot(configuredRoot)) return path.resolve(configuredRoot);
+  if (process.platform === 'win32') {
+    let candidate = path.dirname(process.execPath);
+    while (candidate && candidate !== path.dirname(candidate)) {
+      if (isPortableRoot(candidate)) return candidate;
+      candidate = path.dirname(candidate);
+    }
+  }
+  const sourceRoot = path.dirname(path.dirname(__dirname));
+  if (isPortableRoot(sourceRoot)) return sourceRoot;
+  throw new Error('The shared PulseStudio folder could not be found. Start PulseStudio with the launcher in the extracted package.');
+}
+
 class RecoveryAwareUpdateManager {
   constructor({ app, getWindow, isSafe, configPath, onStatus = () => {}, onEvent = () => {} }) {
     this.app = app;
@@ -333,7 +356,7 @@ class RecoveryAwareUpdateManager {
   createInstallHelper() {
     if (!this.downloadPath || !this.pendingRelease) throw new Error('No downloaded update is ready.');
     const version = this.pendingRelease.version;
-    const appRoot = path.dirname(path.dirname(__dirname));
+    const appRoot = resolvePortableRoot();
     const updatesDir = path.join(this.app.getPath('userData'), 'updates');
     fs.mkdirSync(updatesDir, { recursive: true });
     if (process.platform === 'win32') {
@@ -347,9 +370,11 @@ class RecoveryAwareUpdateManager {
         `if (!(Test-Path (Join-Path $src 'app\\package.json'))) { throw 'Update package is invalid.' }\n` +
         `$pkg = Get-Content (Join-Path $src 'app\\package.json') -Raw | ConvertFrom-Json\nif ($pkg.version -ne $expected) { throw 'Update version validation failed.' }\n` +
         `Get-ChildItem -LiteralPath $src -File | ForEach-Object { Copy-Item -LiteralPath $_.FullName -Destination (Join-Path $root $_.Name) -Force }\n` +
+        `Get-ChildItem -LiteralPath $src -Directory | Where-Object { $_.Name -notin @('app','.git','node_modules','logs','recordings','recovery') } | ForEach-Object {\n` +
+        `  $destination = Join-Path $root $_.Name\n  if (Test-Path -LiteralPath $destination) { Remove-Item -LiteralPath $destination -Recurse -Force }\n  Copy-Item -LiteralPath $_.FullName -Destination $root -Recurse -Force\n}\n` +
         `$srcApp = Join-Path $src 'app'\n$dstApp = Join-Path $root 'app'\n` +
-        `$rc = Start-Process -FilePath 'robocopy.exe' -ArgumentList @($srcApp,$dstApp,'/MIR','/IS','/IT','/R:2','/W:1','/XD','node_modules','logs','.pulsestudio-runtime-windows') -Wait -PassThru -WindowStyle Hidden\n` +
-        `if ($rc.ExitCode -gt 7) { throw ('robocopy failed with exit code ' + $rc.ExitCode) }\n` +
+        `& robocopy.exe $srcApp $dstApp /MIR /IS /IT /R:2 /W:1 /XD node_modules logs .pulsestudio-runtime-windows .pulsestudio-node-runtime\n` +
+        `if ($LASTEXITCODE -gt 7) { throw ('robocopy failed with exit code ' + $LASTEXITCODE) }\n` +
         `Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue\nStart-Process -FilePath ${psQuote(launcher)}\n`;
       fs.writeFileSync(helper, script, 'utf8');
       return { command: 'powershell.exe', args: ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', helper], helper };
@@ -357,20 +382,21 @@ class RecoveryAwareUpdateManager {
     const helper = path.join(updatesDir, `apply-pulsestudio-v${version}.command`);
     const log = path.join(updatesDir, `update-v${version}.log`);
     const shell = process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash';
-    const script = `#!${shell}\nset -eu\nexec >> ${shellQuote(log)} 2>&1\necho "PulseStudio update started: $(date)"\n` +
+    const launcherPath = process.env.PATH || '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin';
+    const script = `#!${shell}\nset -eu\nexport PATH=${shellQuote(launcherPath)}\nexec >> ${shellQuote(log)} 2>&1\necho "PulseStudio update started: $(date)"\n` +
       `ROOT=${shellQuote(appRoot)}\nZIP=${shellQuote(this.downloadPath)}\nEXPECTED=${shellQuote(version)}\nPID_TO_WAIT=${process.pid}\nAPP_DIR="$ROOT/app"\n` +
       `OLD_DEP_SIG=""\nif [ -f "$APP_DIR/package.json" ]; then OLD_DEP_SIG="$(/usr/bin/env node -e 'const p=require(process.argv[1]);process.stdout.write(JSON.stringify({dependencies:p.dependencies||{},devDependencies:p.devDependencies||{}}));' "$APP_DIR/package.json" 2>/dev/null || true)"; fi\n` +
       `while kill -0 "$PID_TO_WAIT" >/dev/null 2>&1; do sleep 0.25; done\nTMP_DIR="$(mktemp -d "\${TMPDIR:-/tmp}/pulsestudio-update.XXXXXX")"\n` +
       `/usr/bin/unzip -q "$ZIP" -d "$TMP_DIR"\nSRC="$TMP_DIR/PulseStudio"\n` +
       `[ -f "$SRC/app/package.json" ] || { echo "Invalid update package"; exit 1; }\n` +
-      `ACTUAL="$(/usr/bin/env node -p "require('$SRC/app/package.json').version")"\n[ "$ACTUAL" = "$EXPECTED" ] || { echo "Version mismatch: $ACTUAL"; exit 1; }\n` +
-      `/usr/bin/rsync -a --checksum --delete --exclude '.git/' --exclude 'app/node_modules/' --exclude 'app/logs/' --exclude 'app/.pulsestudio-runtime-windows/' "$SRC/" "$ROOT/"\n` +
+      `ACTUAL="$(/usr/bin/env node -e 'process.stdout.write(require(process.argv[1]).version)' "$SRC/app/package.json")"\n[ "$ACTUAL" = "$EXPECTED" ] || { echo "Version mismatch: $ACTUAL"; exit 1; }\n` +
+      `/usr/bin/rsync -a --checksum --delete --exclude '.git/' --exclude 'app/node_modules/' --exclude 'app/logs/' --exclude 'app/.pulsestudio-runtime-windows/' --exclude 'app/.pulsestudio-node-runtime/' "$SRC/" "$ROOT/"\n` +
       `NEW_DEP_SIG="$(/usr/bin/env node -e 'const p=require(process.argv[1]);process.stdout.write(JSON.stringify({dependencies:p.dependencies||{},devDependencies:p.devDependencies||{}}));' "$APP_DIR/package.json" 2>/dev/null || true)"\n` +
       `if [ "$OLD_DEP_SIG" != "$NEW_DEP_SIG" ]; then echo "Dependency manifest changed; refreshing local dependencies."; (cd "$APP_DIR" && /usr/bin/env npm install --include=dev); fi\n` +
       `PACKAGE_HASH="$(/usr/bin/env node -e 'const fs=require("fs"),c=require("crypto");process.stdout.write(c.createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex"));' "$APP_DIR/package.json" 2>/dev/null || true)"\nif [ -n "$PACKAGE_HASH" ] && [ -d "$APP_DIR/node_modules" ]; then printf '%s' "$PACKAGE_HASH" > "$APP_DIR/node_modules/.pulsestudio-package-hash"; fi\n` +
       `/bin/chmod +x "$ROOT/Start PulseStudio - macOS.command" "$ROOT/Start PulseStudio - Linux.sh" 2>/dev/null || true\n/bin/rm -rf "$TMP_DIR"\necho "PulseStudio v$EXPECTED installed: $(date)"\n` +
       (process.platform === 'darwin'
-        ? `ELECTRON_APP="$APP_DIR/node_modules/electron/dist/Electron.app"\nELECTRON_BIN="$ELECTRON_APP/Contents/MacOS/Electron"\n[ -x "$ELECTRON_BIN" ] || { echo "Signed Electron runtime is missing; update installed but automatic reopen is unavailable."; exit 1; }\necho "Reopening through existing signed Electron runtime: $ELECTRON_APP"\n/usr/bin/open -n "$ELECTRON_APP" --args "$APP_DIR"\n`
+        ? `ELECTRON_APP="$APP_DIR/node_modules/electron/dist/Electron.app"\nELECTRON_BIN="$ELECTRON_APP/Contents/MacOS/Electron"\n[ -x "$ELECTRON_BIN" ] || { echo "Signed Electron runtime is missing; update installed but automatic reopen is unavailable."; exit 1; }\necho "Reopening through existing signed Electron runtime: $ELECTRON_APP"\n/usr/bin/open -n "$ELECTRON_APP" --env "PATH=$PATH" --env "PULSESTUDIO_PORTABLE_ROOT=$ROOT" --args "$APP_DIR"\n`
         : `"$ROOT/Start PulseStudio - Linux.sh" >/dev/null 2>&1 &\n`);
     fs.writeFileSync(helper, script, { encoding: 'utf8', mode: 0o755 });
     try { fs.chmodSync(helper, 0o755); } catch {}
@@ -400,4 +426,4 @@ class RecoveryAwareUpdateManager {
   shutdown() { if (this.timer) clearInterval(this.timer); this.timer = null; }
 }
 
-module.exports = { RecoveryAwareUpdateManager, compareVersions };
+module.exports = { RecoveryAwareUpdateManager, compareVersions, resolvePortableRoot };

@@ -1,0 +1,148 @@
+PulseStudio 0.2.140 — one shared folder for Mac and Windows
+=========================================================
+
+1. Extract the complete ZIP into a writable location.
+2. Open the extracted PulseStudio folder.
+3. Mac: double-click PulseStudio.app.
+   Windows: double-click Start PulseStudio - Windows.bat.
+
+Both launchers are in this SAME folder. Keep the entire folder together when
+moving it or sharing it. No Terminal commands are needed.
+
+The included application components are ready for Apple silicon Mac and
+64-bit Windows. Apple silicon Mac first launch unpacks its bundled runtime
+locally, without a setup download. Windows launches its included executable
+directly; no Node installation, dependency download, or build is needed.
+Intel Mac remains supported through the launcher's bounded first-time setup.
+Windows ARM uses x64 emulation and needs Windows 11 x64 application support.
+
+Full and Mini View
+------------------
+The Classic Mac interface keeps the existing recording, playback, audio, AI,
+privacy, and diagnostic options. Full View keeps its complete recording setup
+and Studio Desk Playback library; there is no transparency control in Full View.
+New installs use Light appearance; your saved light/dark choice is kept on upgrade.
+
+Choose the pastel blue Open Mini Controller action in Full View to keep the
+recording controls on screen while you work. Mini View keeps the compact 262 x 84
+content layout, with balanced icons, small side insets, and Classic Mac styling.
+
+In Mini View, choose the Video + Audio or Audio Only icon-only selector before
+starting. Hover briefly for the mode name and selection state.
+During recording, the small mode icon beside the recording status confirms
+whether you are recording Video + Audio or Audio Only.
+The pastel blue Start/Stop action, Pause, Bookmark, and microphone controls
+work as before. Start/Stop stays the same size when hovered. Classic Mini uses
+lighter neutral gray, pastel blue, and mint surfaces.
+Use Full View to return to the complete setup or playback library.
+
+When adding a bookmark during Mini recording, you have 3 seconds to begin
+typing optional marker text (previously 1 second). Starting to type keeps the
+entry open. Choose Save or press Enter to save; skip the text to keep the
+default bookmark.
+
+Drag Mini View's small transparency bar from 0% to 75%, or focus it and use
+the arrow keys. 0% is opaque; 75% transparency leaves 25% opacity. The saved
+value affects only Mini View. The bar changes transparency without moving
+the window. Full View always stays opaque.
+
+Hover briefly over an icon for a short tooltip. Mini tooltips appear outside
+the controller so they do not cover the recording information or buttons.
+
+Studio Desk Playback
+--------------------
+Open Playback and choose a recording from the library on the left. The player,
+waveform, transport, bookmarks, snapshots, CC, volume, speed, and fullscreen
+stay in the center. Transcript, Show in folder, and audio/video export actions
+remain beside the player. Search, filters, categories, favorites, rename, Trash,
+and batch selection remain with the library.
+
+Use the tools inspector on the right:
+- Transcript: views, search, speaker corrections, and exports.
+- Insights: chapters, meeting notes, and action items.
+- Trim & cuts: export between two bookmarks, precision trim, and multiple cuts.
+- Timeline: bookmark and chapter navigation.
+Export between bookmarks: choose a saved start and end bookmark, then Clip
+(MP4), Audio (M4A), TXT transcript, or SRT transcript, and choose Export interval.
+Only that interval is saved. Audio-only recordings offer Audio, TXT and SRT.
+If a transcript sentence crosses a marker or lacks usable timings, PulseStudio
+transcribes just the selected audio; SRT times start on the exported clip timeline.
+
+Use Sort above Category to order recordings by date, duration, name or file size,
+in either direction. The choice is remembered; Previous/Next follow that order.
+In a narrower window, these tools stack below the player.
+Recording setup stays in Record, and Mini stays a compact recording controller.
+
+Meeting audio and microphone cleanup
+-----------------------------------
+Choose computer or application audio for the meeting. Turn on the microphone
+if you want to include your own voice. Whenever the microphone is enabled,
+PulseStudio automatically requests whole-system speaker echo cancellation
+only when that capability is advertised, then verifies that it was applied.
+If unavailable, it uses the available browser cancellation path. Echo handling
+works independently of the Computer Audio toggle; no separate setting is needed.
+
+Off, Standard, Enhanced voice, and Strong remain under
+Record > Recording setup > Noise removal. Enhanced voice is recommended for
+normal rooms; use Strong for unusually loud fan or air noise. There is no new
+Playback noise-preset selector. Results depend on your
+microphone, output device, speaker volume, and room. Headphones help prevent
+speaker sound from entering the microphone. If you only need the meeting
+audio, leave PulseStudio's microphone off; this does not mute your meeting app.
+
+Available source microphone, cleaned microphone, and unmixed computer-audio
+reference tracks stay locally in the hidden .pulsestudio-audio-sources folder
+beside the saved recording. Only captured sources are kept. Companion tracks
+follow rename, Trash, and recovery. Microphone/system audio is not uploaded.
+
+First opening on Mac
+--------------------
+The Mac launcher is locally signed, without Apple notarization. If macOS blocks
+its first opening, review it in System Settings > Privacy & Security.
+If macOS asks to access the folder containing PulseStudio, allow that access
+so it can read its shared application files.
+The Dock shows Pulse Studio on the prepared Mac runtime. Only display strings
+are changed after checking that the host allows it; its code identity is retained.
+Sealed or unfamiliar hosts keep their existing name and still launch normally.
+Grant Screen & System Audio Recording, Microphone, or Camera when needed to
+the current host, which macOS may label Electron or Pulse Studio.
+Quit and reopen PulseStudio if macOS requests it after a permission change.
+
+Recordings, settings, analytics, and updates
+------------------------------------------
+New recordings, automatic transcripts, snapshots and default exports save in
+Movies/PulseStudio on Mac or Videos/PulseStudio on Windows. Saved custom folders
+are retained. Older recordings directly in Movies/Videos remain in Playback and
+are not moved. Refreshed legacy transcripts save in the PulseStudio folder.
+
+Fresh transcripts run automatically in the background. The app reuses its local
+Whisper Small q8 model session to avoid loading it again for each recording.
+The existing quality settings and recording priority are preserved. The first
+model load and longer recordings can still take time. Your established
+application-data folder, anonymous analytics and saved consent are retained.
+The GitHub update popup still offers Update Now, Remind Me Later, and Skip
+This Version. Installation waits until recording and other active work is safe.
+
+Publishing
+----------
+Use Publish PulseStudio.command included in this folder to publish
+PulseStudio-cross-platform-v0.2.140.zip. It can select the newest matching ZIP
+beside the publisher or in Downloads and asks before publishing.
+It uploads the complete shared ZIP. Bundled runtimes are excluded from Git
+source commits. This delivery has not been published to GitHub.
+
+If launch fails
+---------------
+Mac: ~/Library/Logs/PulseStudio/launcher.log
+Windows: %LOCALAPPDATA%\PulseStudio\logs\launcher.log
+The graphical error dialog can open the log. Check that the complete folder
+was extracted and is writable.
+
+Version base
+------------
+The application builds on the supplied v0.2.129 source and the shared launchers
+and Mini refinements through v0.2.138. v0.2.139 added Studio Desk Playback and
+automatic supported whole-system speaker echo cancellation with browser fallback.
+v0.2.140 adds bookmark interval exports, library sorting, the PulseStudio media
+folder, Pulse Studio Dock naming, and reusable background speech transcription. The compact Mini controls, natural tooltips, Mini-only 0–75%
+transparency, native controls, and shared prepared runtimes remain in place.

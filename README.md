@@ -1,7 +1,222 @@
-# PulseStudio v0.2.129
+# PulseStudio v0.2.140
 
 
+## v0.2.140 bookmark interval exports, library sorting and faster background transcription
 
+- In Playback → **Trim & cuts** → **Export between bookmarks**, choose two saved
+  bookmarks and export **Clip · MP4**, **Audio · M4A**, **TXT transcript**, or
+  **SRT transcript**. Only the interval between them is exported, as a new file.
+  Start must precede end; missing or invalid bookmarks stop the export.
+  Audio-only recordings offer Audio, TXT and SRT. The source stays selected.
+- Transcript exports reuse sentences fully inside the interval. If a sentence
+  crosses a bookmark or usable timings are missing, the app transcribes only
+  the selected audio. It never substitutes the full recording's transcript.
+  SRT timestamps start on the exported interval's timeline.
+- New recordings, automatic transcripts, snapshots and default export locations
+  use **Movies/PulseStudio** on Mac and **Videos/PulseStudio** on Windows.
+  Existing custom recording folders are retained. Previous media directly in
+  the native media folder remains available in Playback; unrelated files are
+  not moved. Regenerated legacy transcripts are saved in PulseStudio.
+- Sort the Playback library by date, duration, name or file size, in either
+  direction. The choice is remembered; Previous/Next follow the displayed order.
+- Background transcription reuses one local Whisper Small q8 model session,
+  including a preloaded session. Model, precision, chunk overlap, speech-recovery
+  checks and recording priority are preserved. Repeated local test transcriptions
+  had identical text and timestamps and completed faster. First loading and
+  long recordings can still take time; no recording or transcript is uploaded.
+- The Mac Dock displays **Pulse Studio** on the prepared runtime. The launcher
+  changes display strings only when the stock host's signing metadata permits
+  that change, preserving its identifier, executable and code signature. A sealed
+  or unknown host is left unchanged so naming cannot block launch.
+- Recording-specific bookmarks, categories, highlights and insights use path
+  identities, keeping old and new recordings with the same filename separate.
+- Help, About, launchers and documentation report v0.2.140. Studio Desk, Record,
+  Mini, analytics consent, update notifications and the shared launch folder are
+  retained. GitHub publishing remains a separate owner-controlled action.
+
+## v0.2.139 Studio Desk Playback and automatic speaker echo handling
+
+- Organizes the existing Playback tools into the **Studio Desk** layout, with
+  the recording library on the left, player in the center, and **Transcript**,
+  **Insights**, **Trim & cuts**, and **Timeline** tabs in the tools inspector.
+  Recording setup and the compact Mini Controller stay available.
+- Automatically requests whole-system speaker echo cancellation whenever the
+  microphone is enabled, only when that capability is advertised, then verifies
+  that it was applied. Falls back to the available browser cancellation path
+  when needed. This works independently of the Computer Audio toggle.
+- Keeps available source microphone, cleaned microphone, and unmixed
+  computer-audio reference tracks locally beside the saved recording, in the
+  hidden `.pulsestudio-audio-sources` folder. The companion tracks follow rename,
+  Trash, and recovery; microphone/system audio is not uploaded.
+- Keeps the existing **Off**, **Standard**, **Enhanced voice**, and **Strong**
+  microphone cleanup choices in Record. These are recording settings, rather
+  than new Playback presets. Echo reduction depends on the microphone, output
+  device, and room; headphones remain useful when recording meetings.
+- Preserves the compact **262 × 84** Mini layout, icon-only recording modes,
+  stable Start/Stop action, **3-second** bookmark entry, and Mini-only **0–75%**
+  transparency bar. Full View remains opaque.
+- Updates Help, About, documentation, and version metadata together. Saved
+  settings, analytics and consent, update notifications, and the one shared
+  Mac/Windows launch folder retain their established behavior. Publishing is
+  still a separate owner-controlled step.
+
+## v0.2.138 steady Mini actions and lighter Classic styling
+
+- Keeps Mini's **Start/Stop** button the same size when hovered, so its label,
+  icon, and neighboring controls remain steady.
+- Makes the Mini **Video + Audio** and **Audio Only** selectors icon-only.
+  Short tooltips identify each mode and whether it is selected; the active
+  mode indicator remains visible during recording.
+- Lightens Classic Mini View with neutral gray, pastel blue, and mint surfaces
+  to match the selected reference. Keeps the compact **262 × 84** layout,
+  native Mac controls, remembered appearance, and every recording action.
+- Gives Mini recording bookmarks **3 seconds** to start entering optional text,
+  increased from 1 second. Once typing starts, the entry stays open. Save,
+  Enter, and skipping optional text keep their existing behavior.
+- Retains the Mini-only **0–75%** transparency bar, tooltips outside Mini,
+  and Full View's **Open Mini Controller** action. Full View remains opaque.
+- Updates Help, About, documentation, and version metadata together. Saved
+  settings, recording and audio processing, analytics and consent, updates,
+  and the shared Mac/Windows package remain preserved.
+
+## v0.2.137 balanced Mini spacing and pastel blue actions
+
+- Keeps the compact **262 × 84** Mini content layout and its existing top and
+  bottom spacing. Adds a small inset at each side and balances the icons to
+  reduce unused gaps while keeping every recording control available.
+- Uses native macOS Close and Minimize controls to match the Digital Marathon
+  reference. The green Zoom control is hidden in Mini View and restored in Full
+  View. Windows retains its platform controls.
+- Uses light pastel blue for Full View's **Open Mini Controller** action and
+  Mini View's **Start/Stop** action, with readable labels in both appearances.
+  New installs start in Light appearance; an existing saved appearance is kept.
+  The light/dark and Classic/Studio choices remain available.
+- Retains the **Video + Audio** and **Audio Only** icons, Mini-only **0–75%**
+  transparency bar, short tooltips outside Mini, and the Full View controls.
+  During recording, a small mode icon beside the recording status confirms
+  whether the current recording includes video or is audio-only.
+- Updates Help, About, documentation, and version metadata together. Recording,
+  audio processing, saved settings, analytics and consent, GitHub update
+  notifications, the shared Mac/Windows launch folder, and publishing retain
+  their existing behavior.
+
+## v0.2.136 compact Mini Controller and clearer Full View action
+
+- Restores Mini View's original compact **262 × 84** content layout rather than
+  the enlarged v0.2.135 controller. Restrained spacing and toolbar styling match
+  the selected Classic Mac design.
+- Adds a prominent **Open Mini Controller** action in Full View, with a short
+  explanation that it keeps the recording controls on screen while you work.
+  Full recording setup, playback, AI, privacy, and diagnostics remain available.
+- Keeps the **Video + Audio** and **Audio Only** icons before recording and the
+  microphone, Pause, Bookmark, Stop, and Full View controls during recording.
+- Retains the small **0–75%** transparency bar only in Mini View, saved settings,
+  and short delayed tooltips outside the controller. Full View stays opaque
+  and has no transparency control.
+- Updates Help, About, version metadata, and documentation together. The shared
+  Mac/Windows folder, recording and audio behavior, analytics configuration and
+  consent, update notifications, and owner-controlled publishing are preserved.
+
+## v0.2.135 Classic Mac interface and Mini controls
+
+- Refines Full and Mini View with the **Classic Mac** layout: calmer surfaces,
+  consistent spacing, clearer segmented choices, and compact toolbar controls.
+  Existing recording, playback, AI, privacy, diagnostics, and update options
+  remain available.
+- Keeps **Video + Audio** and **Audio Only** icon choices in Mini View. Select
+  the mode before starting a recording. Pause, bookmark, microphone, Stop, and
+  Full View controls retain their existing behavior.
+- Replaces the Mini transparency icon with a small **0–75%** slider. Drag the
+  bar to change transparency continuously; 0% is opaque and 75% leaves 25%
+  opacity. The saved setting applies only to Mini View. Full View has no
+  transparency control and remains opaque.
+- Uses shorter, natural tooltips with a deliberate hover delay. Mini tooltips
+  appear outside the controller so they do not cover its recording information
+  or buttons; tooltips disappear when the pointer leaves or an action begins.
+- Updates Help, About, quick-start instructions, and version metadata together.
+  Recording/audio processing, analytics settings and consent, GitHub update
+  notifications, and publishing keep their established behavior.
+- Retains one shared **PulseStudio** folder containing both the Mac `.app` and
+  Windows `.bat`, including their prepared platform runtimes.
+
+## v0.2.134 one ready-to-launch Mac and Windows folder
+
+- Distributes one ZIP that extracts to **PulseStudio**, with **PulseStudio.app**
+  and **Start PulseStudio - Windows.bat** next to the shared application files.
+- Includes the Windows x64 desktop runtime, recording encoder, and native/AI
+  dependencies. Windows launches the included application directly, without
+  installing Node.js, fetching dependencies, or building an executable.
+- Windows starts through a hidden launcher and reports launch errors in a
+  graphical dialog with access to its log.
+- Apple silicon Mac uses the prepared local runtime added in v0.2.133. First
+  launch unpacks it; later launches reuse it. Both platform runtimes can coexist
+  in this same folder.
+- Preserves recording, recovery, saved settings, anonymous analytics/consent,
+  and GitHub update notifications. The publisher uploads the complete shared
+  release ZIP and keeps the bundled platform runtimes out of Git source commits.
+
+## v0.2.133 first-launch setup recovery
+
+- Includes a prepared **Apple silicon Mac** runtime and all desktop dependencies.
+  First launch verifies and unpacks that payload locally, avoiding npm/network
+  setup. Keep the complete shared folder together.
+- Reuses compatible installed dependencies across version-only updates. Version
+  changes alone no longer trigger npm installation.
+- Intel Mac and Windows first setup checks cached packages before downloading,
+  uses short request retries and a total time limit for each setup stage, and
+  reports elapsed progress. Dependency setup can be cancelled on Mac.
+- Adds **Open Setup Log** and **Cancel Setup** to the Mac launch window, plus
+  a clear inactivity notice. Cancelling or timing out stops only the launcher's
+  own setup processes.
+- Preserves v0.2.129 recording/audio/AI behavior, analytics configuration/consent,
+  saved settings, recovery data, and GitHub update notifications.
+- The package remains one shared folder with `PulseStudio.app` and the Windows
+  `.bat`. The prepared Mac payload makes this ZIP larger; Windows still prepares
+  its own platform runtime on first launch.
+- The publisher excludes the prepared payload from source commits while uploading
+  the complete release ZIP as usual.
+
+## v0.2.132 one shared folder with click-to-launch files
+
+This launcher-only release is based on the supplied v0.2.129 source. The number
+0.2.132 avoids reusing the separate 0.2.130/0.2.131 local builds; their playback
+and application-identity changes are not included in this package.
+
+- **Mac:** double-click `PulseStudio.app` beside the `app` folder. Setup runs in a
+  small graphical window and then opens PulseStudio, without a Terminal window.
+- **Windows:** double-click `Start PulseStudio - Windows.bat` in that same folder.
+- Keep the entire **PulseStudio** folder together; the Mac launcher uses its
+  sibling `app` folder, so moving only the `.app` will not work.
+- On first launch, missing Node.js/npm and desktop dependencies are downloaded
+  automatically. Private Node downloads are checked against the official SHA-256
+  manifest. Internet access and a writable extracted folder are needed for setup.
+- The Mac launcher supports Apple silicon and Intel. It continues to open the
+  original Electron host, preserving v0.2.129's privacy-permission target
+  and sleep/wake safeguards. macOS recording permissions still appear as Electron.
+- The original macOS `.command` and Linux launcher remain available.
+- Fixed Windows portable-update root discovery so the branded Windows runtime
+  updates the shared package rather than its internal resources directory.
+- Both update helpers preserve dependencies, logs, private Node runtimes, and
+  the existing application-data folder; the complete shared launcher layout is
+  copied during updates.
+- GitHub feed, update popup timing, PostHog configuration/consent, recording,
+  recovery, microphone/system audio, and AI processing retain v0.2.129 behavior.
+- The release remains named `PulseStudio-cross-platform-v0.2.132.zip`, compatible
+  with the existing `Publish PulseStudio.command`. Publishing is a separate step.
+
+The bundled updated publisher also excludes generated private
+Node/Windows runtimes from source uploads and installs the shipped app ignore
+rules while retaining the repository's root ignore rules. It can select an
+adjacent ZIP, then falls back to Downloads. The original publisher still accepts
+this package's exact filename and layout.
+
+For a Windows upgrade initiated from v0.2.129's earlier updater, the new launcher
+repairs the old folder-location mistake using the cached update ZIP. If that ZIP
+is unavailable, extract the complete new ZIP into the original PulseStudio folder
+and launch its Windows `.bat`. Windows ARM uses the x64 build and requires
+Windows 11 support for x64 applications; this is not a native ARM build.
+
+See `QUICK_START.txt` for click-to-launch instructions.
 
 ## v0.2.129 macOS sleep/wake input responsiveness
 
@@ -344,32 +559,132 @@ Meeting transcription remains the primary local-AI job. Meeting-note enhancement
 
 Choose the launcher for your computer:
 
-- **macOS:** double-click `Start PulseStudio - macOS.command`
+- **macOS:** double-click `PulseStudio.app`
 - **Windows:** double-click `Start PulseStudio - Windows.bat`
 
-That is all most users need to do.
+Keep the complete **PulseStudio** folder together. Both launchers use its shared
+application files; do not move only the `.app` or `.bat`.
+
+## Full View and Mini View
+
+Full View contains the complete recording setup, Studio Desk Playback library,
+audio and AI options, Help, and About & Diagnostics. Its window remains opaque
+and does not show a transparency control. The existing Classic/Studio themes
+and light/dark appearance choices remain available. New installs use Light
+appearance; saved appearance preferences are preserved on upgrade.
+
+Choose the pastel blue **Open Mini Controller** action in Full View to keep the
+recording controls on screen while you work. Mini View uses the original compact
+262 × 84 content layout, with balanced icons, small side insets, and the updated
+Classic Mac styling.
+
+Mini View keeps the recording controller compact. Before recording, choose the
+**Video + Audio** or **Audio Only** icon-only selector, then choose **Start**.
+Hover briefly to see the mode name and selection state. During recording,
+the small mode icon beside the recording status confirms the active mode. Use
+the microphone, Pause, Bookmark, and Stop controls as before. Choose the Full
+View control whenever you need the full setup or playback library.
+
+When adding a bookmark during Mini recording, you have **3 seconds** to start
+typing optional marker text. Once you start typing, the entry stays open until
+you save or dismiss it. Use **Save** or **Enter** to save the text, or skip the
+text to keep the default bookmark.
+
+The small Mini transparency bar runs from **0% to 75%**. Drag it to set any whole
+percentage, or focus it and use the arrow keys. A higher value makes Mini View
+more transparent; **75% transparency means 25% opacity**. The value is remembered
+between launches and applies only to Mini View. Moving the bar changes the
+setting instead of dragging the window.
+
+Hover briefly over an unfamiliar icon to see a short tooltip. Mini tooltips are
+placed outside the controller so the recording information stays visible.
+
+## Playback in Studio Desk
+
+Open **Playback** and choose a recording in the library. Studio Desk keeps the
+recording library on the left, player in the center, and tools inspector on the
+right. In a narrower window, the inspector stacks below the player.
+
+- **Library:** search, All/Video/Audio/Favorites filters, categories, selection,
+  and batch Trash stay with the recording list. Each recording keeps its
+  favorite, rename, Trash, and category actions.
+- **Player:** waveform, transport, bookmarks, snapshots, CC, volume, speed,
+  and fullscreen remain together. The file details and actions for Transcript,
+  Show in folder, Export audio, and video export remain beside the player.
+- **Transcript:** Raw, Speakers, and Timecoded views, transcript search,
+  speaker corrections, and transcript exports.
+- **Insights:** chapters, meeting notes, and action items with their existing
+  copy, regenerate, and collapse controls.
+- **Trim & cuts:** precision trimming and multiple cuts, saved as a new copy.
+- **Timeline:** bookmark and chapter navigation.
+
+Recording setup stays in **Record**; the Mini Controller continues to provide
+the compact recording controls.
+
+## Recording microphone and meeting audio
+
+For a meeting, select the computer or application audio you want to record and
+turn on the microphone if you also want your own voice. Whenever the microphone
+is enabled, PulseStudio automatically requests whole-system speaker echo
+cancellation only when that capability is advertised, then verifies that it was
+applied. If unavailable, it uses the available browser cancellation path.
+Echo handling is independent of the Computer Audio toggle; no separate echo
+setting is needed.
+
+Choose **Off**, **Standard**, **Enhanced voice**, or **Strong** under
+**Record → Recording setup → Noise removal**. Enhanced voice remains recommended
+for normal rooms; use Strong for unusually loud fan or air noise. These choices
+affect capture and microphone cleanup; Playback does not add a new noise-preset
+selector. Results depend on the microphone, speaker volume, output device, and
+room. Headphones help prevent speaker sound from reaching the microphone.
+If you only need the meeting audio and not your own voice,
+leave PulseStudio's microphone off; this does not mute your meeting app.
+
+When available, separate source microphone, cleaned microphone, and unmixed
+computer-audio reference tracks are retained locally in the hidden
+`.pulsestudio-audio-sources` folder beside the saved recording. Only sources
+that were captured are retained. These companion tracks follow the recording
+when it is renamed, moved to Trash, or recovered. Microphone/system audio is
+not uploaded.
 
 ## First launch
 
-PulseStudio installs its required Node.js packages on first launch when they are not already present.
+The shared package includes prepared runtimes for **Apple silicon Mac** and
+**Windows x64**. Apple silicon Mac unpacks its local payload on first launch;
+Windows opens its included application directly. Neither requires a separate
+Node.js installation or a setup download for these prepared platforms.
 
 Before the first launch:
 
-1. Install the current **Node.js LTS** release if Node.js is not already installed.
-2. Keep an internet connection available for the initial dependency download.
-3. Extract the ZIP completely before starting the app. Do not run the launcher from inside the ZIP preview.
+1. Extract the ZIP completely into a writable location. Do not run from the ZIP preview.
+2. Open the extracted **PulseStudio** folder and use your platform's launcher.
+3. Allow access to the folder containing PulseStudio if macOS asks.
 
-The first launch can take a few minutes while dependencies are prepared. Later launches reuse those dependencies and are much faster.
+Apple silicon Mac's first launch can take a few minutes to unpack locally. Later
+launches reuse the prepared files. Intel Mac uses the launcher's bounded setup
+and may need an internet connection to obtain its compatible runtime. Windows
+ARM requires Windows 11 support for x64 application emulation.
 
-If npm installs the Electron package but skips its binary download, the macOS launcher now repairs the missing signed `Electron.app` automatically by running Electron's own downloader directly. This avoids the v0.2.74 failure that said the stable Electron runtime was missing after a successful npm install.
+Setup progress, cancellation, and access to the setup log are shown in the Mac
+launch window. Launch failures show a graphical message with access to the log.
+The original macOS `.command` remains available for troubleshooting.
 
 ### macOS runtime identity
 
-For this local cross-platform ZIP, the macOS launcher intentionally starts PulseStudio through the signed **Electron.app** runtime instead of creating a newly ad-hoc-signed PulseStudio.app for every version.
+**PulseStudio.app** is the clickable launcher. It starts the existing stock
+**Electron.app** recording host at the same path and with the same bundle
+identifier. The Apple silicon runtime in this ZIP is linker/ad-hoc signed, not
+Developer-ID signed or notarized.
 
-This is deliberate: macOS Screen Recording permission is tied to code-signing identity. A rebuilt ad-hoc app can leave an old **PulseStudio** row visibly switched on while the new binary is still rejected by macOS. The signed Electron host keeps the permission identity stable while PulseStudio itself continues to use the **PulseStudio** name and Dock icon in its UI.
+v0.2.140 prepares the **Pulse Studio** Dock name by changing only the stock
+host's two display-name fields, after confirming that its Info.plist and resources
+are unsealed. Its executable bytes, code hash, signing requirements and other
+bundle metadata are checked before and after. Sealed or unfamiliar runtimes are
+left unchanged; no re-signing or permission reset is performed for naming.
 
-Therefore, in **System Settings → Privacy & Security → Screen & System Audio Recording**, the permission entry that matters for this local v0.2.111 package is **Electron**. Any obsolete app permission entry left by much older local builds can be ignored.
+macOS privacy settings may show **Electron** or **Pulse Studio** for this same
+host. Keep the existing permission enabled and follow macOS's permission prompt
+when needed. Saved application data remains in the established PulseStudio folder.
 
 ## macOS permissions
 
@@ -383,16 +698,16 @@ macOS may ask for permissions depending on the features you use, including:
 For screen capture in this local ZIP:
 
 1. Open **System Settings → Privacy & Security → Screen & System Audio Recording**.
-2. Make sure **Electron** is enabled.
+2. Enable the current recording host, shown as **Electron** or **Pulse Studio**.
 3. Quit any older PulseStudio build that is still running.
-4. Start v0.2.111 using `Start PulseStudio - macOS.command`.
+4. Start v0.2.140 using `PulseStudio.app`.
 5. Choose **Refresh** only if the source thumbnails have not appeared automatically.
 
-If both **PulseStudio** and **Electron** are present, v0.2.111 uses **Electron** for the macOS privacy identity. You do not need to delete the old PulseStudio row.
+The stock host retains its Electron bundle identity even when the Dock name is Pulse Studio. There is no need to delete an existing permission row for this update.
 
 PulseStudio checks the real desktop-capture capability and also retries screen and window enumeration independently if macOS fails a combined source query. A failure to enumerate windows therefore no longer blocks display recording when display sources are still available.
 
-For local Electron-host mode, PulseStudio also uses macOS's Screen & System Audio Recording path for system audio so it does not depend on modifying Electron.app's signed Info.plist.
+For local Electron-host mode, PulseStudio also uses macOS's Screen & System Audio Recording path for system audio while preserving the host's permission identity.
 
 Allow only the permissions needed for the features you want to use.
 
@@ -415,19 +730,22 @@ This is a best-effort operating-system privacy control, not an absolute guarante
 The extracted folder is intentionally simple:
 
 - `README.md` — this guide
-- `Start PulseStudio - macOS.command` — macOS launcher
+- `QUICK_START.txt` — launch and Mini View instructions
+- `PulseStudio.app` — clickable macOS launcher
+- `Start PulseStudio - macOS.command` — macOS troubleshooting launcher
 - `Start PulseStudio - Windows.bat` — Windows launcher
+- `Publish PulseStudio.command` — owner-controlled GitHub publisher
 - `THIRD_PARTY_NOTICES.txt` — required third-party notices
 - `app/` — PulseStudio application, support, build, runtime files, and rotating diagnostics in `app/logs/`; normal users do not need to open or edit this folder
 
 ## If the app does not open
 
 1. Make sure the ZIP was fully extracted.
-2. Make sure the current Node.js LTS release is installed.
+2. Keep the complete extracted folder together and confirm it is writable.
 3. Quit any older PulseStudio instance before starting the new version.
-4. Run the launcher for your operating system again and read any message shown in the Terminal/Command Prompt window.
+4. Open the launcher for your operating system again and read its graphical error message.
 5. On macOS, confirm **Electron** is enabled in Screen & System Audio Recording.
-6. Check the macOS launcher log at `~/Library/Logs/PulseStudio/launcher.log` if startup preparation fails.
+6. Open the setup/launcher log from the error dialog. On Mac it is at `~/Library/Logs/PulseStudio/launcher.log`; on Windows it is at `%LOCALAPPDATA%\PulseStudio\logs\launcher.log`.
 
 Do not delete recovery files if a recording was interrupted; PulseStudio protects them and lets you choose **Recover** when convenient.
 
@@ -436,7 +754,7 @@ Do not delete recovery files if a recording was interrupted; PulseStudio protect
 
 PulseStudio v0.2.124 and later checks the public `girishxp/PulseStudio` GitHub Releases feed automatically. When a newer `PulseStudio-cross-platform-v<version>.zip` release is available and the app is idle, PulseStudio shows an in-app update popup. The user can update immediately, postpone the reminder for 24 hours, or skip that specific version. Update Now downloads the ZIP, verifies the GitHub asset size and SHA-256 digest when GitHub supplies one, and applies it only after PulseStudio exits. Local dependencies/logs are preserved and the normal platform launcher restarts PulseStudio.
 
-The updater is intentionally a portable ZIP updater rather than Electron/Squirrel autoUpdater, so the macOS PulseStudio build itself does not need an Apple Developer certificate for this flow. For future releases, publish a normal GitHub Release with a semantic tag such as `v0.2.124` and attach exactly `PulseStudio-cross-platform-v0.2.124.zip`. No AWS server is required.
+The updater is intentionally a portable ZIP updater rather than Electron/Squirrel autoUpdater, so the macOS PulseStudio build itself does not need an Apple Developer certificate for this flow. For this release, the publisher creates semantic tag `v0.2.140` and attaches exactly `PulseStudio-cross-platform-v0.2.140.zip`. It uploads the complete shared ZIP while excluding the bundled platform runtimes from Git source commits. Run **Publish PulseStudio.command** when you are ready to publish; it asks before pushing. Creating this package does not publish it automatically. No AWS server is required.
 
 ## Anonymous product analytics
 

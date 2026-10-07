@@ -1,4 +1,5 @@
 const fs = require('fs');
+const path = require('path');
 const { normalizeAsrAudio, detectSpeechRegions, transcriptSeemsSparse, transcriptWordCount, offsetWhisperChunks } = require('./lib/transcription-quality');
 
 const cancelledRequests = new Set();
@@ -130,7 +131,72 @@ async function loadTransformers(cacheDir) {
   return transformers;
 }
 
+function asrModelCacheStamp(cacheDir, model) {
+  // A removed or replaced download must not keep using an old in-memory model.
+  // These are the files used by our existing Whisper q8 pipeline.
+  const directory = path.resolve(cacheDir, model);
+  return ['config.json', 'generation_config.json', 'preprocessor_config.json', 'tokenizer.json', 'tokenizer_config.json', 'onnx/encoder_model_quantized.onnx', 'onnx/decoder_model_merged_quantized.onnx']
+    .map((file) => {
+      try {
+        const stat = fs.statSync(path.join(directory, file));
+        return `${file}:${stat.size}:${stat.mtimeMs}`;
+      } catch { return `${file}:missing`; }
+    }).join('|');
+}
+
+function createAsrPipelineCache({ load, stamp = asrModelCacheStamp } = {}) {
+  let entry = null;
+  let pending = Promise.resolve();
+  const dispose = async (pipeline) => { try { await pipeline?.dispose?.(); } catch {} };
+  // The AI manager runs one task at a time. Serialize setup as well, so preload
+  // and transcription share one session without duplicate model allocations.
+  return {
+    get(payload) {
+      const operation = pending.then(async () => {
+        const key = JSON.stringify([path.resolve(payload.cacheDir), String(payload.model), 'q8']);
+        const currentStamp = stamp(payload.cacheDir, payload.model);
+        const startedAt = Date.now();
+        if (entry?.key === key && entry.stamp === currentStamp) {
+          return { pipeline: entry.pipeline, cacheHit: true, modelLoadMs: Date.now() - startedAt };
+        }
+        const previous = entry;
+        entry = null;
+        await dispose(previous?.pipeline);
+        const pipeline = await load(payload);
+        entry = { key, pipeline, stamp: stamp(payload.cacheDir, payload.model) };
+        return { pipeline, cacheHit: false, modelLoadMs: Date.now() - startedAt };
+      });
+      // Failed initialization remains retryable rather than caching a rejection.
+      pending = operation.catch(() => {});
+      return operation;
+    },
+    clear() {
+      const operation = pending.then(async () => {
+        const previous = entry;
+        entry = null;
+        await dispose(previous?.pipeline);
+      });
+      pending = operation.catch(() => {});
+      return operation;
+    }
+  };
+}
+
+const asrPipelineCache = createAsrPipelineCache({
+  load: async (payload) => {
+    const transformers = await loadTransformers(payload.cacheDir);
+    const pipeline = await transformers.pipeline('automatic-speech-recognition', payload.model, {
+      dtype: 'q8',
+      progress_callback: modelProgressCallback(payload, 'Downloading Whisper model', 0.02, 0.17)
+    });
+    try { throwIfCancelled(payload); }
+    catch (error) { try { await pipeline.dispose(); } catch {} throw error; }
+    return pipeline;
+  }
+});
+
 async function transcribe(payload) {
+  const startedAt = Date.now();
   const wav = parsePcm16MonoWav(payload.wavPath);
   try {
     const audio = readAllFloat(wav);
@@ -141,9 +207,11 @@ async function transcribe(payload) {
     const inferenceAudio = normalizeAsrAudio(audio);
 
     postProgress(payload, 'Transcribing', 0.02, 'Loading Whisper model…', 'model');
-    const transformers = await loadTransformers(payload.cacheDir);
-    const transcriber = await transformers.pipeline('automatic-speech-recognition', payload.model, { dtype: 'q8', progress_callback: modelProgressCallback(payload, 'Downloading Whisper model', 0.02, 0.17) });
+    const preprocessingMs = Date.now() - startedAt;
+    const session = await asrPipelineCache.get(payload);
+    const transcriber = session.pipeline;
     throwIfCancelled(payload);
+    const inferenceStartedAt = Date.now();
     const output = await withEstimatedProgress(payload, {
       label: 'Transcribing',
       start: 0.18,
@@ -158,6 +226,8 @@ async function transcribe(payload) {
       task: 'transcribe'
     }));
     throwIfCancelled(payload);
+    const inferenceMs = Date.now() - inferenceStartedAt;
+    const fallbackStartedAt = Date.now();
 
     let text = String(output?.text || '').trim();
     let chunks = Array.isArray(output?.chunks) ? output.chunks : [];
@@ -200,6 +270,14 @@ async function transcribe(payload) {
     return {
       text,
       chunks,
+      performance: {
+        preprocessingMs,
+        modelLoadMs: session.modelLoadMs,
+        modelCacheHit: session.cacheHit,
+        inferenceMs,
+        fallbackMs: Date.now() - fallbackStartedAt,
+        totalMs: Date.now() - startedAt
+      },
       quality: {
         durationSeconds,
         speechSeconds,
@@ -915,14 +993,14 @@ async function meetingInsights(payload) {
 
 
 async function preloadModel(payload) {
-  const transformers = await loadTransformers(payload.cacheDir);
   const kind = String(payload.kind || '');
   const modelId = String(payload.model || '');
   if (!modelId) throw new Error('No model was selected.');
   postProgress(payload, `Downloading ${modelId.split('/').pop()}`, 0.02, 'Preparing model download…', 'model');
   const progress_callback = modelProgressCallback(payload, `Downloading ${modelId.split('/').pop()}`, 0.02, 0.95);
   throwIfCancelled(payload);
-  if (kind === 'transcribe') await transformers.pipeline('automatic-speech-recognition', modelId, { dtype: 'q8', progress_callback });
+  const transformers = kind === 'transcribe' ? null : await loadTransformers(payload.cacheDir);
+  if (kind === 'transcribe') await asrPipelineCache.get(payload);
   else if (kind === 'diarize') {
     await transformers.AutoProcessor.from_pretrained(modelId, { progress_callback });
     await transformers.AutoModelForAudioFrameClassification.from_pretrained(modelId, { dtype: 'q8', progress_callback });
@@ -950,6 +1028,10 @@ async function handle(payload) {
 }
 
 module.exports = {
+  createAsrPipelineCache,
+  asrModelCacheStamp,
+  transcribe,
+  preloadModel,
   parsePcm16MonoWav,
   readFloatChunk,
   overlapDuration,

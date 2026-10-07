@@ -13,12 +13,22 @@ const { atomicWriteJson, RecoveryJournalManager, createPendingRecovery, listPend
 const { VideoEncoderManager } = require('./lib/video-encoder');
 const { AiWorkerManager } = require('./lib/ai-worker-manager');
 const { moveRecordingFamilyToTrash } = require('./lib/trash-manager');
+const { exportMarkerRange } = require('./lib/marker-range-export');
 const { applySpeakerCorrections, mergeSpeakerCorrections, normalizeSpeakerKey } = require('./lib/speaker-corrections');
 const { basicTranscriptLooksSparse, transcriptWordCount } = require('./lib/transcription-quality');
 const { LocalModelManager } = require('./lib/model-manager');
 const { RecoveryAwareUpdateManager } = require('./lib/update-manager');
 const { ActivityLogger } = require('./lib/activity-logger');
 const { AnalyticsManager } = require('./lib/analytics-manager');
+const { WindowTooltip } = require('./lib/window-tooltip');
+const { AudioSourceManager } = require('./lib/audio-sources');
+const recordingFolderPolicy = require('./lib/recording-folder-policy');
+let nativeMacWindowControls = null;
+let nativeMiniWindowControlsAvailable = false;
+if (process.platform === 'darwin') {
+  try { nativeMacWindowControls = require('./native/macos/window-controls.node'); }
+  catch (error) { console.warn('Native Mini window controls unavailable; using the existing compact controls:', error?.message || error); }
+}
 
 const APP_DISPLAY_NAME = 'PulseStudio';
 const APP_USER_MODEL_ID = 'com.girishxp.pulsestudio';
@@ -41,6 +51,15 @@ function activityLog(level, event, details = {}) {
   try { analyticsManager?.trackActivity?.(level, event, details); } catch {}
   return result;
 }
+const audioSourceManager = new AudioSourceManager({
+  validateRecording: value => safeRecordingPath(value),
+  validateMicrophone: value => validMicrophoneRecoveryPath(value),
+  hasAudio: value => fileHasAudioStream(value),
+  ffmpegPath: () => safeFfmpegPath(),
+  run: (...args) => runProcess(...args),
+  trash: value => shell.trashItem(value),
+  log: activityLog
+});
 activityLog('info', 'app.process-start', {
   appVersion: (() => { try { return app.getVersion(); } catch { return 'unknown'; } })(),
   electron: process.versions.electron,
@@ -138,6 +157,8 @@ function installApplicationMenu() {
 }
 
 let mainWindow;
+const windowTooltip = new WindowTooltip({ BrowserWindow, screen, getParent: () => mainWindow,
+  getMode: () => activeWindowMode, getPrivacy: () => windowCapturePrivacyEnabled });
 let selectedSourceId = null;
 let activeWriteStream = null;
 let activeTempPath = null;
@@ -245,12 +266,27 @@ let updateManager = null;
 const durationProbeCache = new Map();
 const waveformCache = new Map();
 
-// v0.2.64: Mini Controller is a strictly fixed 262 x 84 HUD.
-// Its outer BrowserWindow must never grow/shrink from saved bounds, content fitting,
-// recording-state changes, native resize gestures, or stale preferences.
+// v0.2.136: restore the original compact controller footprint. Its controls
+// stay at the supplied build's size rather than expanding the recording HUD.
+// These are content dimensions. Windows keeps its native caption and menu outside
+// this space, so the recording controls have the same room on either platform.
 const COMPACT_WINDOW_WIDTH = 262;
 const COMPACT_WINDOW_HEIGHT = 84;
 const FULL_WINDOW_MAX_SIZE = 16384;
+
+function compactWindowDimensions() {
+  let frameWidth = 0;
+  let frameHeight = 0;
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    try {
+      const outer = mainWindow.getBounds();
+      const content = mainWindow.getContentBounds();
+      frameWidth = Math.max(0, outer.width - content.width);
+      frameHeight = Math.max(0, outer.height - content.height);
+    } catch {}
+  }
+  return { width: COMPACT_WINDOW_WIDTH + frameWidth, height: COMPACT_WINDOW_HEIGHT + frameHeight };
+}
 
 function compactWindowStatePath() {
   return path.join(app.getPath('userData'), 'compact-window-state.json');
@@ -276,7 +312,7 @@ function persistCompactWindowBounds(bounds = compactWindowBounds) {
     const temp = `${target}.tmp`;
     fs.writeFileSync(temp, JSON.stringify({
       x: Math.round(bounds.x), y: Math.round(bounds.y),
-      width: COMPACT_WINDOW_WIDTH, height: COMPACT_WINDOW_HEIGHT
+      width: Math.round(bounds.width), height: Math.round(bounds.height)
     }), 'utf8');
     try { fs.rmSync(target, { force: true }); } catch {}
     fs.renameSync(temp, target);
@@ -393,8 +429,7 @@ function compactDisplayForBounds(bounds) {
 function normalizeCompactBounds(bounds, fallback = null) {
   const base = bounds || fallback || { x: 40, y: 40, width: COMPACT_WINDOW_WIDTH, height: COMPACT_WINDOW_HEIGHT };
   // Size is intentionally fixed so any stale/saved Mini dimensions are migrated.
-  const width = COMPACT_WINDOW_WIDTH;
-  const height = COMPACT_WINDOW_HEIGHT;
+  const { width, height } = compactWindowDimensions();
   const display = compactDisplayForBounds({ ...base, width, height });
   const area = display?.workArea || { x: 0, y: 0, width: 1440, height: 900 };
   const margin = 8;
@@ -428,8 +463,8 @@ function snapCompactPosition(x, y, width, height, cursor) {
 
 function compactBoundsForRecordingState(bounds, active) {
   const current = normalizeCompactBounds(bounds);
-  const targetWidth = COMPACT_WINDOW_WIDTH;
-  const targetHeight = COMPACT_WINDOW_HEIGHT;
+  const targetWidth = current.width;
+  const targetHeight = current.height;
   const display = compactDisplayForBounds(current);
   const area = display.workArea;
   const margin = 8;
@@ -513,24 +548,31 @@ function applyNativeWindowControlsForMode(mode) {
   if (!mainWindow || mainWindow.isDestroyed()) return;
   const compact = mode === 'compact';
 
-  // v0.2.58: macOS Mini uses compact custom Close/Minimize controls and hides
-  // the native traffic lights. This removes the green zoom/full-screen button
-  // that can overlap the transparency control in the 262 px Mini title area.
-  if (process.platform === 'darwin') {
-    try { mainWindow.setWindowButtonVisibility(!compact); } catch {}
-  }
-
   // Mini is a fixed recording HUD; maximizing/full-screening it is not useful.
   try { mainWindow.setFullScreenable(!compact); } catch {}
   try { mainWindow.setMaximizable(!compact); } catch {}
+  if (process.platform === 'darwin') {
+    // v0.2.137: match Digital Marathon's native close/minimize controls. Hide
+    // only green zoom in Mini; keep OS appearance, hover and accessibility.
+    try {
+      mainWindow.setWindowButtonVisibility(true);
+      mainWindow.setWindowButtonPosition(compact ? { x: 8, y: 5 } : null);
+      nativeMiniWindowControlsAvailable = Boolean(nativeMacWindowControls?.setMini(mainWindow.getNativeWindowHandle(), compact));
+      if (!nativeMiniWindowControlsAvailable) mainWindow.setWindowButtonVisibility(!compact);
+    } catch {
+      nativeMiniWindowControlsAvailable = false;
+      try { mainWindow.setWindowButtonVisibility(!compact); } catch {}
+    }
+  }
   applyWindowCaptureProtection(mainWindow);
 }
 
 function lockCompactWindowSize() {
   if (!mainWindow || mainWindow.isDestroyed()) return;
-  try { mainWindow.setMinimumSize(COMPACT_WINDOW_WIDTH, COMPACT_WINDOW_HEIGHT); } catch {}
-  try { mainWindow.setMaximumSize(COMPACT_WINDOW_WIDTH, COMPACT_WINDOW_HEIGHT); } catch {}
   try { mainWindow.setResizable(false); } catch {}
+  const { width, height } = compactWindowDimensions();
+  try { mainWindow.setMinimumSize(width, height); } catch {}
+  try { mainWindow.setMaximumSize(width, height); } catch {}
 }
 
 function unlockFullWindowSize() {
@@ -628,7 +670,7 @@ function ensureMainWindowVisible({ focus = true } = {}) {
     const bounds = mainWindow.getBounds();
     if (activeWindowMode === 'compact') {
       const target = normalizeCompactBounds(compactWindowBounds || bounds, bounds);
-      if (bounds.width !== COMPACT_WINDOW_WIDTH || bounds.height !== COMPACT_WINDOW_HEIGHT || !windowIntersectsAnyDisplay(bounds)) {
+      if (bounds.width !== target.width || bounds.height !== target.height || !windowIntersectsAnyDisplay(bounds)) {
         lockCompactWindowSize();
         mainWindow.setBounds(target, false);
         if (!compactWindowBounds) compactWindowBounds = { ...target };
@@ -1023,6 +1065,7 @@ function createWindow() {
     show: false,
     width: initialCompact ? COMPACT_WINDOW_WIDTH : initialBounds.width,
     height: initialCompact ? COMPACT_WINDOW_HEIGHT : initialBounds.height,
+    useContentSize: initialCompact,
     ...(Number.isFinite(initialBounds.x) ? { x: initialBounds.x } : {}),
     ...(Number.isFinite(initialBounds.y) ? { y: initialBounds.y } : {}),
     minWidth: initialCompact ? COMPACT_WINDOW_WIDTH : 1020,
@@ -1041,6 +1084,9 @@ function createWindow() {
   });
 
   const createdWindow = mainWindow;
+  for (const event of ['blur', 'move', 'resize', 'minimize', 'hide', 'close']) {
+    createdWindow.on(event, () => windowTooltip.hide());
+  }
   applyWindowCaptureProtection(createdWindow);
   createdWindow.once('ready-to-show', () => {
     if (mainWindow !== createdWindow) return;
@@ -1096,6 +1142,7 @@ function createWindow() {
   });
 
   createdWindow.on('closed', () => {
+    windowTooltip.dispose();
     clearTimeout(startupWindowShowFailsafeTimer);
     startupWindowShowFailsafeTimer = null;
     if (mainWindow === createdWindow) mainWindow = null;
@@ -1135,7 +1182,7 @@ function createWindow() {
     const bounds = mainWindow.getBounds();
     if (activeWindowMode === 'compact') {
       const fixed = normalizeCompactBounds(bounds);
-      if (bounds.width !== COMPACT_WINDOW_WIDTH || bounds.height !== COMPACT_WINDOW_HEIGHT) {
+      if (bounds.width !== fixed.width || bounds.height !== fixed.height) {
         enforceCompactWindowSize();
         return;
       }
@@ -1442,7 +1489,7 @@ function recordingsDirectorySettingsPath() {
 }
 
 function defaultRecordingsDirectory() {
-  return app.getPath('videos');
+  return recordingFolderPolicy.defaultDirectory(app.getPath('videos'));
 }
 
 function loadRecordingsDirectoryPreference() {
@@ -1450,7 +1497,10 @@ function loadRecordingsDirectoryPreference() {
   recordingsDirectoryPreferenceLoaded = true;
   try {
     const data = JSON.parse(fs.readFileSync(recordingsDirectorySettingsPath(), 'utf8'));
-    if (data?.directory && path.isAbsolute(String(data.directory))) recordingsDirectoryOverride = path.resolve(String(data.directory));
+    if (data?.directory && path.isAbsolute(String(data.directory))) {
+      const normalized = recordingFolderPolicy.destination(data.directory, app.getPath('videos'));
+      recordingsDirectoryOverride = recordingFolderPolicy.samePath(normalized, defaultRecordingsDirectory()) ? null : normalized;
+    }
   } catch {}
 }
 
@@ -1470,7 +1520,7 @@ function recordingsDirectory() {
       return recordingsDirectoryOverride;
     } catch {
       // If a removable/custom location is temporarily unavailable, keep the preference
-      // but fall back to the OS Movies/Videos folder so the app remains usable.
+      // but fall back to Movies/PulseStudio or Videos/PulseStudio.
     }
   }
   const dir = defaultRecordingsDirectory();
@@ -1480,7 +1530,7 @@ function recordingsDirectory() {
 
 function setRecordingsDirectory(directory) {
   if (activeWriteStream || activeTempPath) throw new Error('Stop the active recording before changing the recording folder.');
-  const requested = path.resolve(String(directory || '').trim());
+  const requested = recordingFolderPolicy.destination(String(directory || '').trim(), app.getPath('videos'));
   if (!requested || !path.isAbsolute(requested)) throw new Error('Choose a valid recording folder.');
   fs.mkdirSync(requested, { recursive: true });
   fs.accessSync(requested, fs.constants.R_OK | fs.constants.W_OK);
@@ -1601,8 +1651,25 @@ function sanitizeCategoryName(value) {
   return name;
 }
 
+function legacyMetadataKeyForRecording(recordingPath, metadata) {
+  const file = path.resolve(String(recordingPath));
+  const basename = path.basename(file);
+  if (!metadata || !Object.prototype.hasOwnProperty.call(metadata, basename)) return null;
+  const videos = app.getPath('videos');
+  const current = recordingsDirectory();
+  const legacyFile = path.join(videos, basename);
+  if (recordingFolderPolicy.samePath(current, recordingFolderPolicy.defaultDirectory(videos))) {
+    let legacyExists = false;
+    try { legacyExists = fs.statSync(legacyFile).isFile(); } catch {}
+    // The old native-root recording owns its basename metadata. A new recording
+    // with the same name in PulseStudio must not inherit or delete those values.
+    if (legacyExists && !recordingFolderPolicy.samePath(file, legacyFile)) return null;
+  }
+  return basename;
+}
+
 function categoryForRecording(filePath, metadata = loadCategoryMetadata()) {
-  return metadata.assignments[path.basename(filePath)] || 'Uncategorized';
+  return metadata.assignments[path.resolve(filePath)] || metadata.assignments[legacyMetadataKeyForRecording(filePath, metadata.assignments)] || 'Uncategorized';
 }
 
 function createRecordingCategory(requestedName) {
@@ -1627,7 +1694,9 @@ function setRecordingCategory(recordingPath, requestedCategory) {
     metadata.categories.push(category);
     metadata.categories.sort((a, b) => a.localeCompare(b));
   }
-  const key = path.basename(safe);
+  const key = path.resolve(safe);
+  const legacyKey = legacyMetadataKeyForRecording(safe, metadata.assignments);
+  if (legacyKey) delete metadata.assignments[legacyKey];
   if (category === 'Uncategorized') delete metadata.assignments[key];
   else metadata.assignments[key] = metadata.categories.find((item) => item.toLowerCase() === category.toLowerCase()) || category;
   saveCategoryMetadata(metadata);
@@ -1636,22 +1705,23 @@ function setRecordingCategory(recordingPath, requestedCategory) {
 
 function migrateRecordingCategory(oldPath, newPath) {
   const metadata = loadCategoryMetadata();
-  const oldKey = path.basename(oldPath);
-  const newKey = path.basename(newPath);
+  const legacyKey = legacyMetadataKeyForRecording(oldPath, metadata.assignments);
+  const oldKey = Object.hasOwn(metadata.assignments, path.resolve(oldPath)) ? path.resolve(oldPath) : legacyKey;
+  const newKey = path.resolve(newPath);
   if (metadata.assignments[oldKey]) {
     metadata.assignments[newKey] = metadata.assignments[oldKey];
     delete metadata.assignments[oldKey];
+    if (legacyKey) delete metadata.assignments[legacyKey];
     saveCategoryMetadata(metadata);
   }
 }
 
 function removeRecordingCategoryAssignment(recordingPath) {
   const metadata = loadCategoryMetadata();
-  const key = path.basename(recordingPath);
-  if (metadata.assignments[key]) {
-    delete metadata.assignments[key];
-    saveCategoryMetadata(metadata);
-  }
+  const legacyKey = legacyMetadataKeyForRecording(recordingPath, metadata.assignments);
+  delete metadata.assignments[path.resolve(recordingPath)];
+  if (legacyKey) delete metadata.assignments[legacyKey];
+  saveCategoryMetadata(metadata);
 }
 
 
@@ -1686,7 +1756,9 @@ function normalizeMarkers(markers) {
 function markersForRecording(recordingPath) {
   const safe = safeRecordingPath(recordingPath);
   const metadata = loadMarkerMetadata();
-  return normalizeMarkers(metadata[path.basename(safe)] || []);
+  const key = path.resolve(safe);
+  const legacyKey = legacyMetadataKeyForRecording(safe, metadata);
+  return normalizeMarkers(Object.prototype.hasOwnProperty.call(metadata, key) ? metadata[key] : legacyKey ? metadata[legacyKey] : []);
 }
 
 function saveMarkersForRecording(recordingPath, markers) {
@@ -1694,29 +1766,36 @@ function saveMarkersForRecording(recordingPath, markers) {
   if (!fs.existsSync(safe)) throw new Error('Recording was not found.');
   const metadata = loadMarkerMetadata();
   const normalized = normalizeMarkers(markers);
-  const key = path.basename(safe);
+  const key = path.resolve(safe);
+  const legacyKey = legacyMetadataKeyForRecording(safe, metadata);
   if (normalized.length) metadata[key] = normalized;
   else delete metadata[key];
+  if (legacyKey) delete metadata[legacyKey];
   saveMarkerMetadata(metadata);
   return normalized;
 }
 
 function migrateRecordingMarkers(oldPath, newPath) {
   const metadata = loadMarkerMetadata();
-  const oldKey = path.basename(oldPath);
-  const newKey = path.basename(newPath);
-  if (metadata[oldKey]) {
-    metadata[newKey] = metadata[oldKey];
-    delete metadata[oldKey];
+  const oldKey = path.resolve(oldPath);
+  const newKey = path.resolve(newPath);
+  const legacyKey = legacyMetadataKeyForRecording(oldPath, metadata);
+  const sourceKey = Object.prototype.hasOwnProperty.call(metadata, oldKey) ? oldKey : legacyKey;
+  if (sourceKey) {
+    metadata[newKey] = metadata[sourceKey];
+    if (oldKey !== newKey) delete metadata[oldKey];
+    if (legacyKey) delete metadata[legacyKey];
     saveMarkerMetadata(metadata);
   }
 }
 
 function removeRecordingMarkers(recordingPath) {
   const metadata = loadMarkerMetadata();
-  const key = path.basename(recordingPath);
-  if (metadata[key]) {
+  const key = path.resolve(recordingPath);
+  const legacyKey = legacyMetadataKeyForRecording(recordingPath, metadata);
+  if (Object.prototype.hasOwnProperty.call(metadata, key) || legacyKey) {
     delete metadata[key];
+    if (legacyKey) delete metadata[legacyKey];
     saveMarkerMetadata(metadata);
   }
 }
@@ -1771,7 +1850,7 @@ function voiceHighlightsForRecording(recordingPath) {
   if (!MY_VOICE_HIGHLIGHTS_ENABLED) return [];
   const safe = safeRecordingPath(recordingPath);
   const metadata = loadVoiceHighlightsMetadata();
-  const entry = metadata[path.basename(safe)];
+  const entry = metadata[path.resolve(safe)] || metadata[legacyMetadataKeyForRecording(safe, metadata)];
   return normalizeVoiceHighlights(Array.isArray(entry) ? entry : entry?.segments || []);
 }
 
@@ -1781,7 +1860,9 @@ function saveVoiceHighlightsForRecording(recordingPath, segments, details = {}) 
   if (!fs.existsSync(safe)) throw new Error('Recording was not found.');
   const metadata = loadVoiceHighlightsMetadata();
   const normalized = normalizeVoiceHighlights(segments, details.durationSeconds);
-  const key = path.basename(safe);
+  const key = path.resolve(safe);
+  const legacyKey = legacyMetadataKeyForRecording(safe, metadata);
+  if (legacyKey) delete metadata[legacyKey];
   if (normalized.length) metadata[key] = {
     version: 1,
     method: String(details.method || 'mic-system-readonly'),
@@ -1840,11 +1921,13 @@ async function refineVoiceHighlightsWithEnrollment(recordingPath) {
 function migrateRecordingVoiceHighlights(oldPath, newPath) {
   if (!MY_VOICE_HIGHLIGHTS_ENABLED) return;
   const metadata = loadVoiceHighlightsMetadata();
-  const oldKey = path.basename(oldPath);
-  const newKey = path.basename(newPath);
+  const legacyKey = legacyMetadataKeyForRecording(oldPath, metadata);
+  const oldKey = Object.hasOwn(metadata, path.resolve(oldPath)) ? path.resolve(oldPath) : legacyKey;
+  const newKey = path.resolve(newPath);
   if (metadata[oldKey]) {
     metadata[newKey] = metadata[oldKey];
     delete metadata[oldKey];
+    if (legacyKey) delete metadata[legacyKey];
     saveVoiceHighlightsMetadata(metadata);
   }
 }
@@ -1852,11 +1935,10 @@ function migrateRecordingVoiceHighlights(oldPath, newPath) {
 function removeRecordingVoiceHighlights(recordingPath) {
   if (!MY_VOICE_HIGHLIGHTS_ENABLED) return;
   const metadata = loadVoiceHighlightsMetadata();
-  const key = path.basename(recordingPath);
-  if (metadata[key]) {
-    delete metadata[key];
-    saveVoiceHighlightsMetadata(metadata);
-  }
+  const legacyKey = legacyMetadataKeyForRecording(recordingPath, metadata);
+  delete metadata[path.resolve(recordingPath)];
+  if (legacyKey) delete metadata[legacyKey];
+  saveVoiceHighlightsMetadata(metadata);
 }
 
 function trimVoiceHighlights(segments, startSeconds, endSeconds) {
@@ -1896,8 +1978,18 @@ async function deleteRecordingAndTranscript(recordingPath) {
   const safe = safeRecordingPath(recordingPath);
   if (!fs.existsSync(safe)) throw new Error('Recording was not found.');
   const cancelledProcessing = await cancelBackgroundProcessingForRecording(safe);
-  const transcripts = transcriptPathsForRecording(safe);
+  const transcripts = existingTranscriptPathsForRecording(safe);
   const trashed = await moveRecordingFamilyToTrash({ shell, recordingPath: safe, transcriptPaths: transcripts });
+  // A legacy recording may have both an old sidecar and a refreshed one in PulseStudio.
+  const modernTranscripts = transcriptPathsForRecording(safe);
+  const legacyBase = safe.slice(0, -path.extname(safe).length);
+  for (const sidecar of new Set([modernTranscripts.txt, modernTranscripts.srt, `${legacyBase}.txt`, `${legacyBase}.srt`])) {
+    if (trashed.includes(sidecar) || !fs.existsSync(sidecar)) continue;
+    try { await shell.trashItem(sidecar); trashed.push(sidecar); } catch {}
+  }
+  let audioSourcesTrashed = false;
+  try { audioSourcesTrashed = await audioSourceManager.moveToTrash(safe); }
+  catch (error) { activityLog('warn', 'audio.sources-trash-failed', { error }); }
   removeRecordingCategoryAssignment(safe);
   removeRecordingMarkers(safe);
   removeRecordingVoiceHighlights(safe);
@@ -1908,7 +2000,7 @@ async function deleteRecordingAndTranscript(recordingPath) {
   durationProbeCache.clear();
   waveformCache.clear();
   setTimeout(() => cancelledRecordingProcessing.delete(safe), 30000).unref?.();
-  return { trashed, recordingPath: safe, trash: 'system', cancelledProcessing };
+  return { trashed, audioSourcesTrashed, recordingPath: safe, trash: 'system', cancelledProcessing };
 }
 
 async function deleteRecordingsBatch(recordingPaths) {
@@ -1929,14 +2021,7 @@ async function deleteRecordingsBatch(recordingPaths) {
 
 function isInsideRecordingsDirectory(filePath) {
   if (!filePath) return false;
-  const root = path.resolve(recordingsDirectory());
-  const candidate = path.resolve(String(filePath));
-  if (process.platform === 'win32') {
-    const r = root.toLowerCase();
-    const c = candidate.toLowerCase();
-    return c === r || c.startsWith(`${r}${path.sep}`);
-  }
-  return candidate === root || candidate.startsWith(`${root}${path.sep}`);
+  return recordingFolderPolicy.readableRecording(filePath, recordingsDirectory(), app.getPath('videos'));
 }
 
 function safeRecordingPath(filePath) {
@@ -2002,9 +2087,29 @@ function releaseReservedRecordingPath(filePath) {
 
 function transcriptPathsForRecording(recordingPath) {
   const safe = safeRecordingPath(recordingPath);
-  const ext = path.extname(safe);
-  const base = safe.slice(0, -ext.length);
+  const base = recordingFolderPolicy.transcriptBase(safe, recordingsDirectory(), app.getPath('videos'));
   return { txt: `${base}.txt`, srt: `${base}.srt` };
+}
+
+function existingTranscriptPathsForRecording(recordingPath) {
+  const safe = safeRecordingPath(recordingPath);
+  const modern = transcriptPathsForRecording(safe);
+  const legacyBase = safe.slice(0, -path.extname(safe).length);
+  return {
+    txt: fs.existsSync(modern.txt) ? modern.txt : fs.existsSync(`${legacyBase}.txt`) ? `${legacyBase}.txt` : modern.txt,
+    srt: fs.existsSync(modern.srt) ? modern.srt : fs.existsSync(`${legacyBase}.srt`) ? `${legacyBase}.srt` : modern.srt
+  };
+}
+
+function recordingLibraryEntries() {
+  return recordingFolderPolicy.libraryDirectories(recordingsDirectory(), app.getPath('videos')).flatMap((directory) => {
+    try {
+      return fs.readdirSync(directory, { withFileTypes: true })
+        .filter((entry) => entry.isFile() && !entry.name.startsWith('.') && /\.(mp4|webm|m4a|mp3)$/i.test(entry.name))
+        .map((entry) => ({ name: entry.name, filePath: path.join(directory, entry.name) }))
+        .filter((entry) => !reservedRecordingOutputPaths.has(path.resolve(entry.filePath)));
+    } catch { return []; }
+  });
 }
 
 function insightsMetadataPath() {
@@ -2028,22 +2133,23 @@ function saveInsightsMetadata(metadata) {
 
 function migrateRecordingInsights(oldPath, newPath) {
   const metadata = loadInsightsMetadata();
-  const oldKey = path.basename(oldPath);
-  const newKey = path.basename(newPath);
+  const legacyKey = legacyMetadataKeyForRecording(oldPath, metadata);
+  const oldKey = Object.hasOwn(metadata, path.resolve(oldPath)) ? path.resolve(oldPath) : legacyKey;
+  const newKey = path.resolve(newPath);
   if (metadata[oldKey]) {
     metadata[newKey] = metadata[oldKey];
     delete metadata[oldKey];
+    if (legacyKey) delete metadata[legacyKey];
     saveInsightsMetadata(metadata);
   }
 }
 
 function removeRecordingInsights(recordingPath) {
   const metadata = loadInsightsMetadata();
-  const key = path.basename(recordingPath);
-  if (metadata[key]) {
-    delete metadata[key];
-    saveInsightsMetadata(metadata);
-  }
+  const legacyKey = legacyMetadataKeyForRecording(recordingPath, metadata);
+  delete metadata[path.resolve(recordingPath)];
+  if (legacyKey) delete metadata[legacyKey];
+  saveInsightsMetadata(metadata);
 }
 
 function formatInsightsTimestamp(seconds) {
@@ -2063,15 +2169,17 @@ function transcriptForMeetingModel(text, srt) {
 async function getOrGenerateRecordingInsights(recordingPath, force = false) {
   const safe = safeRecordingPath(recordingPath);
   if (!fs.existsSync(safe)) throw new Error('Recording was not found.');
-  const transcriptPaths = transcriptPathsForRecording(safe);
+  const transcriptPaths = existingTranscriptPathsForRecording(safe);
   const text = fs.existsSync(transcriptPaths.txt) ? fs.readFileSync(transcriptPaths.txt, 'utf8') : '';
   const timeline = transcriptTimelineForRecording(safe);
   const srt = timeline.srtText;
   if (!String(text || '').trim() && !timeline.cues.length) throw new Error('Transcript is not ready yet.');
   const fingerprint = transcriptFingerprint(text, srt);
   const metadata = loadInsightsMetadata();
-  const key = path.basename(safe);
-  const cached = metadata[key];
+  const key = path.resolve(safe);
+  const legacyKey = legacyMetadataKeyForRecording(safe, metadata);
+  const cached = metadata[key] || metadata[legacyKey];
+  if (legacyKey) delete metadata[legacyKey];
   if (!force && cached && cached.transcriptFingerprint === fingerprint && cached.version === 3) return cached;
   let durationSeconds = null;
   try { durationSeconds = await probeRecordingDuration(safe, fs.statSync(safe)); } catch {}
@@ -2139,7 +2247,10 @@ function getOrGenerateRecordingInsightsQueued(recordingPath, force = false) {
 function correctRecordingInsight(recordingPath, payload = {}) {
   const safe = safeRecordingPath(recordingPath);
   const metadata = loadInsightsMetadata();
-  const key = path.basename(safe);
+  const key = path.resolve(safe);
+  const legacyKey = legacyMetadataKeyForRecording(safe, metadata);
+  if (!metadata[key] && legacyKey) metadata[key] = metadata[legacyKey];
+  if (legacyKey) delete metadata[legacyKey];
   const current = metadata[key];
   if (!current) throw new Error('Generate meeting insights before correcting an item.');
   const text = String(payload.text || '').trim();
@@ -2927,6 +3038,16 @@ async function finalizeSealedRecordingInternal(sessionId) {
     }
     throwIfFinalizationCancelled(key);
     if (sealed.microphonePath && fs.existsSync(sealed.microphonePath) && fs.statSync(sealed.microphonePath).size >= 128) {
+      try {
+        meta.audioSources = await audioSourceManager.preserve(outputPath, sealed.microphonePath, sealed.neuralMicrophonePath, {
+          ...meta,
+          neuralMicrophoneMethod: meta.neuralMicrophoneMethod || sealed.neuralMicrophoneMethod || 'none',
+          microphoneStartOffsetMs: Math.max(0, Number(meta.microphoneStartOffsetMs || sealed.meta?.microphoneStartOffsetMs) || 0)
+        });
+      } catch (error) {
+        if (error?.code === 'FINALIZATION_CANCELLED') throw error;
+        activityLog('warn', 'audio.sources-preserve-failed', { error });
+      }
       meta.microphoneCleanup = await postProcessAndMixMicrophone(
         outputPath,
         sealed.microphonePath,
@@ -2972,6 +3093,7 @@ async function finalizeSealedRecordingInternal(sessionId) {
         fs.renameSync(outputPath, partialOutputPath);
       }
     } catch {}
+    try { audioSourceManager.discard(outputPath); } catch {}
     updateSealedRecoveryManifest(sealed, {
       failureReason: error.message,
       attemptedOutputPath: outputPath,
@@ -3777,10 +3899,11 @@ async function mixMicrophoneIntoRecording(basePath, micPath, recordingKind = 'vi
 function fastMicrophoneFilter(noiseMode, neuralMethod = 'none') {
   const mode = normalizeMicNoiseMode(noiseMode);
   const localNeural = /rnnoise/i.test(String(neuralMethod || ''));
+  const browserSuppressed = /^(chromium-voice-isolation|webrtc-noise-suppression)$/.test(String(neuralMethod || ''));
   // v0.2.122: Enhanced/Strong already have capture-time RNNoise. Do not denoise,
   // gate, dynamically normalize, or add the previous 1.58-1.68x gain after Stop.
   // Retain only light rumble removal; the final mix owns the attenuation-only limiter.
-  if ((mode === 'enhanced' || mode === 'strong') && localNeural) {
+  if ((mode === 'enhanced' || mode === 'strong') && (localNeural || browserSuppressed)) {
     const cutoff = mode === 'strong' ? 80 : 65;
     return `highpass=f=${cutoff}:p=2`;
   }
@@ -3885,6 +4008,15 @@ async function recoverOneJournalInternal(journal, manifestPath = null) {
     const recoveredMic = validMicrophoneRecoveryPath(journal.microphonePath);
     const recoveredNeuralMic = validMicrophoneRecoveryPath(journal.neuralMicrophonePath);
     if (recoveredMic) {
+      try {
+        await audioSourceManager.preserve(outputPath, recoveredMic, recoveredNeuralMic, {
+          ...(journal.meta || {}),
+          neuralMicrophoneMethod: journal.neuralMicrophoneMethod || journal.meta?.neuralMicrophoneMethod || 'none'
+        });
+      } catch (error) {
+        if (isRecoveryCancellationError(error)) throw error;
+        activityLog('warn', 'audio.sources-recovery-preserve-failed', { error });
+      }
       // Recovery is a salvage path, not a quality-enhancement pass. Mix the untouched
       // microphone track directly so recovery stays deterministic, cancellable, and
       // does not wait on VAD/neural-AI work before the recorder can be used again.
@@ -3914,6 +4046,7 @@ async function recoverOneJournalInternal(journal, manifestPath = null) {
     return { recovered: true, path: outputPath, message: `An unfinished ${kind === 'audio' ? 'audio ' : ''}recording was recovered successfully: ${path.basename(outputPath)}` };
   } catch (error) {
     try { if (fs.existsSync(outputPath)) fs.unlinkSync(outputPath); } catch {}
+    try { audioSourceManager.discard(outputPath); } catch {}
     if (isRecoveryCancellationError(error)) {
       return {
         recovered: false,
@@ -4217,7 +4350,7 @@ function transcriptTimelineForRecording(recordingPath, metadata = null) {
   }
   // Backward compatibility only: old builds created an automatic .srt sidecar.
   // Continue reading it, but new recordings no longer create one automatically.
-  const paths = transcriptPathsForRecording(safe);
+  const paths = existingTranscriptPathsForRecording(safe);
   if (fs.existsSync(paths.srt)) {
     try {
       const legacySrt = fs.readFileSync(paths.srt, 'utf8');
@@ -4332,10 +4465,11 @@ function chunksToSrt(chunks, fallbackText = '') {
 
 
 async function transcribeRecordingAutomatically(recordingPath, force = false) {
+  const transcriptionStartedAt = Date.now();
   const safe = analysisReadyRecordingPath(recordingPath);
   if (!fs.existsSync(safe)) throw new Error('Recording was not found.');
   lastRecordingPath = safe;
-  const existing = transcriptPathsForRecording(safe);
+  const existing = existingTranscriptPathsForRecording(safe);
   if (!force && fs.existsSync(existing.txt)) {
     const text = fs.readFileSync(existing.txt, 'utf8');
     const timeline = transcriptTimelineForRecording(safe);
@@ -4367,6 +4501,7 @@ async function transcribeRecordingAutomatically(recordingPath, force = false) {
     saveTranscriptVerification(safe, text, srtText, { noAudio: true });
     return { text, srtText, txtPath: saved.txt, srtPath: '', model: AUTO_TRANSCRIPTION_MODEL, noAudio: true, cached: false };
   }
+  const extractionMs = Date.now() - transcriptionStartedAt;
   try {
     const wavInfo = fs.statSync(wavPath);
     if (!wavInfo.size || wavInfo.size <= 44) {
@@ -4378,6 +4513,7 @@ async function transcribeRecordingAutomatically(recordingPath, force = false) {
       return { text, srtText, txtPath: saved.txt, srtPath: '', model: AUTO_TRANSCRIPTION_MODEL, cached: false };
     }
     throwIfRecordingProcessingCancelled(safe);
+    const queuedAt = Date.now();
     const output = await runAiWorkerQueued({
       task: 'transcribe',
       recordingName: path.basename(safe),
@@ -4387,6 +4523,17 @@ async function transcribeRecordingAutomatically(recordingPath, force = false) {
       model: AUTO_TRANSCRIPTION_MODEL
     }, 30 * 60 * 1000, { preemptLowerPriority: true, staleTimeoutMs: 3 * 60 * 1000, stallRetries: 1 });
     throwIfRecordingProcessingCancelled(safe);
+    // Timings contain no transcript, recording name, path or audio content.
+    activityLog('info', 'ai.transcription-performance', {
+      extractionMs,
+      workerAndQueueMs: Date.now() - queuedAt,
+      modelCacheHit: output?.performance?.modelCacheHit === true,
+      modelLoadMs: Math.max(0, Number(output?.performance?.modelLoadMs) || 0),
+      inferenceMs: Math.max(0, Number(output?.performance?.inferenceMs) || 0),
+      fallbackMs: Math.max(0, Number(output?.performance?.fallbackMs) || 0),
+      workerTotalMs: Math.max(0, Number(output?.performance?.totalMs) || 0),
+      totalMs: Date.now() - transcriptionStartedAt
+    });
     const text = String(output?.text || '').trim() || '[No speech detected]';
     const srt = chunksToSrt(output?.chunks, text);
     const saved = saveTranscriptBesideRecording(safe, text);
@@ -4436,7 +4583,7 @@ function renameRecordingAndTranscript(recordingPath, requestedName) {
   if (source === target) return { path: source, name: path.basename(source), url: `recording://media?path=${encodeURIComponent(source)}` };
   if (fs.existsSync(target)) throw new Error('A recording with that name already exists.');
 
-  const oldTranscripts = transcriptPathsForRecording(source);
+  const oldTranscripts = existingTranscriptPathsForRecording(source);
   const newTranscripts = transcriptPathsForRecording(target);
   if (fs.existsSync(newTranscripts.txt) || fs.existsSync(newTranscripts.srt)) {
     throw new Error('Transcript files already exist for that target name. Choose another name.');
@@ -4457,6 +4604,8 @@ function renameRecordingAndTranscript(recordingPath, requestedName) {
   migrateRecordingInsights(source, target);
   migrateRecordingSpeakers(source, target);
   migrateRecordingTranscriptMetadata(source, target);
+  try { audioSourceManager.rename(source, target); }
+  catch (error) { activityLog('warn', 'audio.sources-rename-failed', { error }); }
   if (lastRecordingPath === source) lastRecordingPath = target;
   return { path: target, name: newName, url: `recording://media?path=${encodeURIComponent(target)}`, txtPath: newTranscripts.txt, srtPath: fs.existsSync(newTranscripts.srt) ? newTranscripts.srt : '' };
 }
@@ -4485,15 +4634,11 @@ function probeRecordingDuration(filePath, stat) {
 async function listRecordings() {
   const dir = recordingsDirectory();
   const categoryMetadata = loadCategoryMetadata();
-  const entries = fs.readdirSync(dir, { withFileTypes: true })
-    .filter((entry) => entry.isFile()
-      && !entry.name.startsWith('.')
-      && /\.(mp4|webm|m4a|mp3)$/i.test(entry.name)
-      && !reservedRecordingOutputPaths.has(path.resolve(path.join(dir, entry.name))));
+  const entries = recordingLibraryEntries();
   const files = await Promise.all(entries.map(async (entry) => {
-    const filePath = path.join(dir, entry.name);
+    const filePath = entry.filePath;
     const stat = fs.statSync(filePath);
-    const transcripts = transcriptPathsForRecording(filePath);
+    const transcripts = existingTranscriptPathsForRecording(filePath);
     const durationSeconds = await probeRecordingDuration(filePath, stat);
     return {
       name: entry.name,
@@ -4561,15 +4706,12 @@ async function waveformForRecording(recordingPath, points = 1200) {
 function searchRecordingLibrary(query) {
   const q = String(query || '').trim().toLowerCase();
   if (!q) return [];
-  const dir = recordingsDirectory();
   const categories = loadCategoryMetadata();
   const results = [];
-  for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
-    if (!entry.isFile() || entry.name.startsWith('.') || !/\.(mp4|webm|m4a|mp3)$/i.test(entry.name)) continue;
-    const filePath = path.join(dir, entry.name);
-    if (reservedRecordingOutputPaths.has(path.resolve(filePath))) continue;
+  for (const entry of recordingLibraryEntries()) {
+    const filePath = entry.filePath;
     const category = categoryForRecording(filePath, categories);
-    const transcripts = transcriptPathsForRecording(filePath);
+    const transcripts = existingTranscriptPathsForRecording(filePath);
     let transcript = '';
     try { if (fs.existsSync(transcripts.txt)) transcript = fs.readFileSync(transcripts.txt, 'utf8'); } catch {}
     const haystack = `${entry.name}\n${category}\n${transcript}`.toLowerCase();
@@ -4939,7 +5081,7 @@ function readLogTail(filePath, maxBytes = 2 * 1024 * 1024) {
 
 async function exportDiagnosticsPackage(options = {}) {
   const defaultName = `pulsestudio-diagnostics-${new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19)}.zip`;
-  const pick = await dialog.showSaveDialog(mainWindow, { title: 'Export PulseStudio Diagnostics', defaultPath: path.join(app.getPath('downloads'), defaultName), filters: [{ name: 'ZIP archive', extensions: ['zip'] }] });
+  const pick = await dialog.showSaveDialog(mainWindow, { title: 'Export PulseStudio Diagnostics', defaultPath: path.join(recordingsDirectory(), defaultName), filters: [{ name: 'ZIP archive', extensions: ['zip'] }] });
   if (pick.canceled || !pick.filePath) return { cancelled: true };
   const snapshot = diagnosticsSnapshot();
   let ffmpegMajor = null;
@@ -5204,6 +5346,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  windowTooltip.dispose();
   appIsQuitting = true;
   if (mainWindow && !mainWindow.isDestroyed()) {
     try {
@@ -5244,6 +5387,14 @@ function eventIsFromMainWindow(event) {
   return Boolean(mainWindow && !mainWindow.isDestroyed() && event?.sender?.id === mainWindow.webContents.id);
 }
 
+ipcMain.handle('window:show-tooltip', (event, payload) => {
+  if (!eventIsFromMainWindow(event) || activeManualWindowDrag) return { shown: false };
+  return windowTooltip.show(payload);
+});
+ipcMain.on('window:hide-tooltip', event => {
+  if (eventIsFromMainWindow(event)) windowTooltip.hide();
+});
+
 // Full mode uses an explicit pointer-following drag path rather than relying on
 // Chromium drag regions. This keeps movement deterministic on every click-drag,
 // including mixed-DPI multi-display setups where native drag regions can feel
@@ -5251,6 +5402,7 @@ function eventIsFromMainWindow(event) {
 // are both in DIP, so the window stays locked to the initial pointer offset.
 ipcMain.on('window:drag-start', (event) => {
   if (!eventIsFromMainWindow(event) || !mainWindow) return;
+  windowTooltip.hide();
   if (mainWindow.isDestroyed() || mainWindow.isFullScreen() || mainWindow.isMaximized()) return;
   const cursor = screen.getCursorScreenPoint();
   const bounds = mainWindow.getBounds();
@@ -5289,6 +5441,7 @@ ipcMain.on('window:drag-end', (event) => {
 
 ipcMain.handle('window:set-compact', (_event, compact) => {
   if (!mainWindow || mainWindow.isDestroyed()) return { compact: Boolean(compact) };
+  windowTooltip.hide();
   const wantsCompact = Boolean(compact);
   const currentBounds = mainWindow.getBounds();
 
@@ -5326,7 +5479,7 @@ ipcMain.handle('window:set-compact', (_event, compact) => {
   }
 
   persistWindowViewState();
-  return { compact: wantsCompact, bounds: mainWindow.getBounds() };
+  return { compact: wantsCompact, bounds: mainWindow.getBounds(), nativeMiniControls: nativeMiniWindowControlsAvailable };
 });
 
 ipcMain.handle('window:get-view-state', (event) => {
@@ -5334,7 +5487,8 @@ ipcMain.handle('window:get-view-state', (event) => {
   const saved = readSavedWindowViewState();
   return {
     mode: activeWindowMode === 'compact' ? 'compact' : 'full',
-    hasSavedState: Boolean(saved)
+    hasSavedState: Boolean(saved),
+    nativeMiniControls: nativeMiniWindowControlsAvailable
   };
 });
 
@@ -5412,19 +5566,20 @@ ipcMain.handle('window:set-capture-privacy', (event, enabled) => {
   windowCapturePrivacyPreferenceLoaded = true;
   persistWindowCapturePrivacyPreference();
   applyWindowCaptureProtection(mainWindow);
+  windowTooltip.refreshPrivacy();
   return windowCapturePrivacySnapshot(mainWindow);
 });
 
-ipcMain.handle('window:set-transparency', (_event, percent) => {
+ipcMain.handle('window:set-transparency', (event, percent) => {
+  if (!eventIsFromMainWindow(event)) return { percent: 0, opacity: 1, miniOnly: true };
   if (!mainWindow || mainWindow.isDestroyed()) return { percent: 0, opacity: 1, miniOnly: true };
-  const allowed = new Set([0, 10, 20, 30, 50]);
   const requested = Number(percent);
-  const value = allowed.has(requested) ? requested : 0;
-  const opacity = Math.max(0.5, Math.min(1, 1 - (value / 100)));
+  const value = Number.isFinite(requested) ? Math.round(Math.max(0, Math.min(75, requested))) : 0;
+  const opacity = Math.max(0.25, Math.min(1, 1 - (value / 100)));
 
   // v0.2.126: transparency is intentionally Mini View-only. The renderer may
-  // still let a Full View user choose the saved Mini preference, but the native
-  // Full window itself is always kept at opacity 1.
+  // restore a saved Mini preference before switching modes; the Full window
+  // itself is always kept at opacity 1 and has no transparency control.
   if (activeWindowMode !== 'compact') {
     try { mainWindow.setOpacity(1); } catch {}
     return { percent: value, opacity: 1, miniOnly: true, deferredUntilMiniView: value > 0 };
@@ -5868,7 +6023,7 @@ ipcMain.handle('recordings:category-set', (_event, payload = {}) => setRecording
 
 ipcMain.handle('recordings:transcript', async (_event, recordingPath) => {
   const safe = safeRecordingPath(recordingPath);
-  const paths = transcriptPathsForRecording(safe);
+  const paths = existingTranscriptPathsForRecording(safe);
   const text = fs.existsSync(paths.txt) ? fs.readFileSync(paths.txt, 'utf8') : '';
   const timeline = transcriptTimelineForRecording(safe);
   const srt = timeline.srtText; // Generated in memory for CC/timecoded views; not auto-written beside the recording.
@@ -5945,6 +6100,38 @@ ipcMain.handle('snapshot:recording-frame', async (_event, payload = {}) => {
   const outputPath = nextSnapshotPath();
   await runProcess(executable, ['-y', '-ss', seconds.toFixed(3), '-i', source, '-frames:v', '1', '-an', outputPath]);
   return { path: outputPath, directory: snapshotsDirectory(), seconds };
+});
+
+ipcMain.handle('recording:export-marker-range', async (_event, payload = {}) => {
+  const source = analysisReadyRecordingPath(payload.recordingPath);
+  if (!fs.existsSync(source)) throw new Error('Recording was not found.');
+  const executable = safeFfmpegPath();
+  if (!executable || !fs.existsSync(executable)) throw new Error('FFmpeg is unavailable.');
+  const actualDuration = await probeRecordingDuration(source, fs.statSync(source));
+  const timeline = transcriptTimelineForRecording(source);
+  const metadata = loadTranscriptMetadata()[transcriptMetadataKey(source)];
+  // Outdated or untimed transcripts cannot establish exact marker boundaries.
+  const trustedCues = metadata?.audioFingerprint === recordingAudioFingerprint(source) ? timeline.cues : [];
+  cancelledRecordingProcessing.delete(source);
+  const result = await recordingProcessingContext.run({ recordingPath: source }, () => exportMarkerRange({
+    source, markers: markersForRecording(source), startMarkerId: payload.startMarkerId,
+    endMarkerId: payload.endMarkerId, kind: payload.kind, durationSeconds: actualDuration,
+    outputDirectory: recordingsDirectory(), timelineCues: trustedCues,
+    videoArgs: videoEncodingArgs(null, false),
+    runFfmpeg: (args) => runProcess(executable, args),
+    probeDuration: (file) => probeRecordingDuration(file, fs.statSync(file)),
+    checkCancelled: () => throwIfRecordingProcessingCancelled(source),
+    transcribeExcerpt: (wavPath) => runAiWorkerQueued({
+      task: 'transcribe', recordingName: path.basename(source), recordingPath: source,
+      wavPath, cacheDir: path.join(app.getPath('userData'), 'models'), model: AUTO_TRANSCRIPTION_MODEL
+    }, 30 * 60 * 1000, { preemptLowerPriority: true, staleTimeoutMs: 3 * 60 * 1000, stallRetries: 1 })
+  }));
+  if (result.kind === 'clip' || result.kind === 'audio') {
+    const category = categoryForRecording(source);
+    if (category !== 'Uncategorized') setRecordingCategory(result.path, category);
+    durationProbeCache.clear();
+  }
+  return result;
 });
 
 ipcMain.handle('recording:trim', async (_event, payload = {}) => {
@@ -6117,7 +6304,7 @@ ipcMain.handle('recording:export-audio', async (_event, payload = {}) => {
   if (sourceMarkers.length) saveMarkersForRecording(outputPath, sourceMarkers);
   const sourceVoiceHighlights = voiceHighlightsForRecording(source);
   if (sourceVoiceHighlights.length) saveVoiceHighlightsForRecording(outputPath, sourceVoiceHighlights, { method: 'audio-export-inheritance' });
-  const sourceTranscript = transcriptPathsForRecording(source);
+  const sourceTranscript = existingTranscriptPathsForRecording(source);
   const outputTranscript = transcriptPathsForRecording(outputPath);
   try { if (fs.existsSync(sourceTranscript.txt)) fs.copyFileSync(sourceTranscript.txt, outputTranscript.txt); } catch {}
   try { if (fs.existsSync(sourceTranscript.srt)) fs.copyFileSync(sourceTranscript.srt, outputTranscript.srt); } catch {}

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en" data-theme="light">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -15,7 +15,7 @@
         <div class="brand-mark" aria-hidden="true"><span class="brand-dot"></span></div>
         <div class="brand-copy">
           <div class="eyebrow">PULSESTUDIO</div>
-          <h1 id="brandTitle">Capture, play back, and transcribe</h1>
+          <h1 id="brandTitle">PulseStudio</h1>
         </div>
       </div>
       <div class="compact-mac-window-controls compact-only" id="compactMacWindowControls" aria-label="Mini window controls">
@@ -32,12 +32,17 @@
               <path class="compact-privacy-off-mark" d="M7.4 7.4 16.6 16.6"/>
             </svg>
           </span>
-          <button class="header-button transparency-cycle-button" id="transparencyButton" type="button" aria-label="Mini View transparency: 0% — Full View stays opaque" data-fast-tooltip-title="Mini View transparency: 0% — Full View stays opaque" data-tooltip-click-only="true" data-tooltip-custom-only="true"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="7.5"/><path d="M12 4.5a7.5 7.5 0 0 1 0 15Z"/></svg><span id="transparencyValue">Mini 0%</span></button>
+          <label class="compact-only mini-transparency-control" id="transparencyButton" for="transparencySlider">
+            <span class="visually-hidden">Mini View transparency</span>
+            <input id="transparencySlider" type="range" min="0" max="75" step="1" value="0" aria-label="Mini View transparency" aria-valuetext="0% transparent" data-fast-tooltip-title="Mini transparency" />
+            <output id="transparencyValue" for="transparencySlider">0%</output>
+          </label>
           <button class="icon-button" id="themeToggle" type="button" aria-label="Switch to light mode" title="Switch to light mode"><svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="3.5"/><path d="M12 2.8v2.1M12 19.1v2.1M2.8 12h2.1M19.1 12h2.1M5.5 5.5 7 7M17 17l1.5 1.5M18.5 5.5 17 7M7 17l-1.5 1.5"/></svg></button>
         </div>
         <button class="icon-button compact-only always-on-top-button" id="alwaysOnTopButton" type="button" aria-pressed="false" title="Keep Mini Controller above other windows" aria-label="Keep Mini Controller above other windows">
           <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 4h6l-1 5 3 3v2H7v-2l3-3-1-5Z"/><path d="M12 14v6"/></svg>
         </button>
+        <button class="icon-button compact-only compact-folder-button" id="compactOpenRecordingsFolderButton" type="button" title="Open recordings folder" aria-label="Open recordings folder"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M3 6.5h6l2 2h10v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/><path d="M3 8.5h18"/></svg></button>
         <button class="header-button compact-only compact-full-view-button" id="compactFullViewButton" type="button" title="Open Full View" aria-label="Open Full View"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 5H5v4"/><path d="M15 5h4v4"/><path d="M19 15v4h-4"/><path d="M5 15v4h4"/></svg><span class="compact-full-view-label">Full View</span></button>
         <button class="header-button full-only" id="themesButton" type="button" title="Choose visual theme">◈ Themes</button>
         <button class="header-button" id="helpButton" type="button" title="Help">? Help</button>
@@ -52,9 +57,10 @@
             <button class="workspace-tab workspace-content-tab active" id="captureWorkspaceTab" data-workspace="capture" type="button" role="tab" aria-selected="true" aria-controls="captureView">Record</button>
             <button class="workspace-tab workspace-content-tab" id="playbackWorkspaceTab" data-workspace="playback" type="button" role="tab" aria-selected="false" aria-controls="playbackView">Playback</button>
           </div>
-          <div class="workspace-tab-group workspace-mode-tabs" aria-label="Window view mode">
+          <div class="workspace-tab-group workspace-mode-tabs mini-controller-entry" aria-label="Window view mode">
             <button class="workspace-tab workspace-mode-tab active" id="fullViewButton" type="button" aria-pressed="true" title="Full view"><span class="mode-label-full">Full</span><span class="mode-label-compact">F</span></button>
-            <button class="workspace-tab workspace-mode-tab" id="compactViewButton" type="button" aria-pressed="false" title="Mini Controller"><span class="mode-label-full">Mini</span><span class="mode-label-compact">M</span></button>
+            <button class="workspace-tab workspace-mode-tab" id="compactViewButton" type="button" aria-pressed="false" aria-describedby="miniControllerDescription" title="Open Mini Controller"><span class="mode-label-full">Open Mini Controller</span><span class="mode-label-compact">M</span></button>
+            <span class="mini-controller-description full-only" id="miniControllerDescription">Keep recording controls on screen</span>
           </div>
           <div class="workspace-playback-actions playback-only hidden" aria-label="Playback library actions">
             <button class="workspace-action-button" id="refreshRecordings" type="button" title="Refresh recording library" aria-label="Refresh recording library">
@@ -139,9 +145,10 @@
             </section>
             <div class="compact-record-row">
               <div class="compact-record-time" id="compactRecordTime">
-                <button class="compact-record-mic-toggle hidden" id="compactRecordingMicToggle" type="button" aria-pressed="false" aria-label="Mute microphone" data-fast-tooltip-title="Mute microphone" data-tooltip-delay="700" data-tooltip-hover-only="true" data-tooltip-custom-only="true">
-                  <svg viewBox="0 0 24 24" aria-hidden="true"><path class="compact-record-mic-body" d="M12 3.8a3 3 0 0 0-3 3v5.1a3 3 0 0 0 6 0V6.8a3 3 0 0 0-3-3Z"/><path class="compact-record-mic-stand" d="M6.8 11.4a5.2 5.2 0 0 0 10.4 0M12 16.6v3.2M9.2 19.8h5.6"/><path class="compact-record-mic-slash" d="M5 5l14 14"/></svg>
-                </button>
+                <span class="compact-recording-kind-indicator" id="compactRecordingKindIndicator">
+                  <span class="compact-kind-indicator-video" role="img" aria-label="Video + Audio recording" data-fast-tooltip-title="Video + Audio recording"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="6.5" width="12" height="11" rx="2.5"/><path d="m15.5 10 5-2.8v9.6l-5-2.8z"/></svg></span>
+                  <span class="compact-kind-indicator-audio" role="img" aria-label="Audio Only recording" data-fast-tooltip-title="Audio Only recording"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12v2M9 8v8M12 5v14M15 8v8M18 10v4"/></svg></span>
+                </span>
                 <span class="record-dot"></span>
                 <span class="recording-health-dot hidden" id="compactHealthIndicator" role="status" aria-label="Recording health is being checked" title="Recording health"></span>
                 <strong class="compact-record-state" id="compactRecordingState">READY</strong>
@@ -149,13 +156,16 @@
               </div>
               <div class="compact-action-cluster" aria-label="Mini Controller recording controls">
                 <div class="compact-record-kind-control" id="compactRecordingKindControl" role="group" aria-label="Recording mode">
-                  <button class="compact-record-kind-button is-selected" id="compactRecordingKindVideoButton" type="button" data-recording-kind="video" data-tooltip-delay="90" aria-pressed="true" aria-label="Video + Audio" title="Video + Audio selected">
+                  <button class="compact-record-kind-button is-selected" id="compactRecordingKindVideoButton" type="button" data-recording-kind="video" aria-pressed="true" aria-label="Video + Audio" title="Video + Audio selected">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="3.5" y="6.5" width="12" height="11" rx="2.5"/><path d="m15.5 10 5-2.8v9.6l-5-2.8z"/></svg>
                   </button>
-                  <button class="compact-record-kind-button" id="compactRecordingKindAudioButton" type="button" data-recording-kind="audio" data-tooltip-delay="90" aria-pressed="false" aria-label="Audio Only" title="Switch to Audio Only">
+                  <button class="compact-record-kind-button" id="compactRecordingKindAudioButton" type="button" data-recording-kind="audio" aria-pressed="false" aria-label="Audio Only" title="Switch to Audio Only">
                     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 12v2M9 8v8M12 5v14M15 8v8M18 10v4"/></svg>
                   </button>
                 </div>
+                <button class="compact-record-mic-toggle hidden" id="compactRecordingMicToggle" type="button" aria-pressed="false" aria-label="Mute microphone" data-fast-tooltip-title="Mute microphone" data-tooltip-delay="700" data-tooltip-hover-only="true" data-tooltip-custom-only="true">
+                  <svg viewBox="0 0 24 24" aria-hidden="true"><path class="compact-record-mic-body" d="M12 3.8a3 3 0 0 0-3 3v5.1a3 3 0 0 0 6 0V6.8a3 3 0 0 0-3-3Z"/><path class="compact-record-mic-stand" d="M6.8 11.4a5.2 5.2 0 0 0 10.4 0M12 16.6v3.2M9.2 19.8h5.6"/><path class="compact-record-mic-slash" d="M5 5l14 14"/></svg>
+                </button>
                 <button class="compact-action-button compact-pause-action hidden" id="compactPauseButton" type="button" aria-keyshortcuts="Control+Alt+P Meta+Alt+P" aria-label="Pause recording" title="Pause recording"><svg viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="5" width="3.5" height="14" rx="1"/><rect x="13.5" y="5" width="3.5" height="14" rx="1"/></svg></button>
                 <button class="compact-action-button compact-bookmark-action hidden" id="compactBookmarkButton" type="button" aria-keyshortcuts="Control+Alt+B Meta+Alt+B" aria-label="Add bookmark" title="Add bookmark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4.5h10v15l-5-3.2-5 3.2Z"/></svg></button>
                 <button class="compact-action-button compact-record-action" id="compactStartButton" type="button" aria-keyshortcuts="Control+Alt+R Meta+Alt+R" aria-label="Start recording" title="Start recording"><span class="compact-record-button-dot" aria-hidden="true"></span><span>Start</span></button>
@@ -204,7 +214,7 @@
               </div>
               <div class="playback-folder-pill" id="recordingsFolderPill" title="Recording folder">
                 <span>Recording folder</span>
-                <strong id="recordingsFolderLabel">Movies / Videos</strong>
+                <strong id="recordingsFolderLabel">Movies / PulseStudio</strong>
               </div>
             </div>
           </div>
@@ -213,6 +223,7 @@
 
           <div class="playback-layout">
             <aside class="recording-browser">
+              <div class="recording-browser-heading"><strong>Recordings</strong><button class="button secondary tiny" id="batchSelectButton" type="button" aria-pressed="false">Select</button></div>
               <div class="recording-library-search">
                 <span class="search-icon" aria-hidden="true">⌕</span>
                 <input id="librarySearch" type="search" placeholder="Search recordings or transcript…" autocomplete="off" aria-label="Search recording library" />
@@ -224,6 +235,18 @@
                 <button class="recording-filter-chip" type="button" data-library-filter="audio" aria-pressed="false">Audio <span id="quickFilterAudioCount">0</span></button>
                 <button class="recording-filter-chip" type="button" data-library-filter="favorites" aria-pressed="false">★ Favorites <span id="quickFilterFavoritesCount">0</span></button>
               </div>
+              <label class="recording-sort-row" for="librarySort"><span>Sort</span>
+                <select id="librarySort" aria-label="Sort recording library">
+                  <option value="date-newest">Date · newest first</option>
+                  <option value="date-oldest">Date · oldest first</option>
+                  <option value="duration-longest">Duration · longest first</option>
+                  <option value="duration-shortest">Duration · shortest first</option>
+                  <option value="name-az">Name · A–Z</option>
+                  <option value="name-za">Name · Z–A</option>
+                  <option value="size-largest">Size · largest first</option>
+                  <option value="size-smallest">Size · smallest first</option>
+                </select>
+              </label>
               <div class="recording-organizer">
                 <label class="recording-filter-label">Category
                   <select id="categoryFilter" aria-label="Filter recording categories">
@@ -232,7 +255,7 @@
                 </label>
                 <div class="recording-organizer-actions">
                   <button class="button secondary tiny" id="newCategoryButton" type="button">+ Category</button>
-                  <button class="button secondary tiny" id="batchSelectButton" type="button" aria-pressed="false">Select</button>
+                  
                 </div>
               </div>
               <div id="batchDeleteBar" class="batch-delete-bar hidden" aria-live="polite">
@@ -250,7 +273,17 @@
 
             <div class="playback-stage">
               <div id="playbackEmpty" class="playback-empty">Select a recording to play it here.</div>
-              <div id="videoPlayerShell" class="video-player-shell hidden">
+              
+
+              
+
+              <div id="playbackDetails" class="hidden">
+                <div class="playback-player-column">
+<div class="playback-title-row">
+                  <div class="playback-name-group"><strong id="playbackFileName">—</strong><button class="button secondary tiny" id="renamePlaybackFile" type="button">Rename</button></div>
+                  <div class="playback-badges"><span id="playbackMediaBadge" class="mini-badge">Video</span><span id="playbackDurationBadge" class="mini-badge">00:00</span><span id="playbackSizeBadge" class="mini-badge">—</span><span id="subtitleBadge" class="mini-badge hidden" aria-hidden="true">No transcript</span><span id="playbackProcessingBadge" class="mini-badge processing hidden" role="status" aria-live="polite">Ready</span></div>
+                </div>
+<div id="videoPlayerShell" class="video-player-shell hidden">
                 <div class="video-viewport">
                   <video id="playbackVideo" playsinline preload="auto"></video>
                   <div id="playbackMediaLoading" class="playback-media-loading hidden" aria-hidden="true"><span class="playback-media-loading-spinner"></span><span id="playbackMediaLoadingText">Loading video…</span></div>
@@ -287,20 +320,23 @@
                     <span id="playbackTotalTime" class="player-time">00:00:00</span>
                   </div>
                   <div class="player-control-row">
-                    <div class="player-control-group navigation-controls" aria-label="Clip and bookmark navigation">
-                      <button class="player-icon-button" id="previousClip" type="button" title="Previous recording" aria-label="Previous recording"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5v14"/><path d="m18 6-9 6 9 6z"/></svg></button>
-                      <span class="player-control-divider" aria-hidden="true"></span>
+                    <div class="player-control-group navigation-controls" aria-label="Bookmark and timeline navigation">
+                      
+                      
                       <button class="player-icon-button bookmark-nav-button" id="previousBookmark" type="button" disabled title="Previous bookmark" aria-label="Previous bookmark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M11 4.5h8v15l-4-2.5-4 2.5z"/><path d="m8 8-4 4 4 4"/><path d="M4.5 12H10"/></svg></button>
                       <button class="player-icon-button bookmark-nav-button bookmark-add-button" id="addBookmarkPlayer" type="button" aria-keyshortcuts="B" disabled title="Add bookmark with marker text (B)" aria-label="Add bookmark at current position with marker text"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v18l-5-3-5 3z"/><path d="M12 7v6"/><path d="M9 10h6"/></svg></button>
                       <button class="player-icon-button bookmark-nav-button bookmark-delete-button" id="deleteBookmarkPlayer" type="button" disabled title="Delete bookmark at current position" aria-label="Delete bookmark at current position"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 3h10v18l-5-3-5 3z"/><path d="m9.5 8.5 5 5"/><path d="m14.5 8.5-5 5"/></svg></button>
                       <button class="player-icon-button bookmark-nav-button" id="nextBookmark" type="button" disabled title="Next bookmark" aria-label="Next bookmark"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 4.5h8v15l-4-2.5-4 2.5z"/><path d="m16 8 4 4-4 4"/><path d="M14 12h5.5"/></svg></button>
-                      <span class="player-control-divider" aria-hidden="true"></span>
-                      <button class="player-icon-button" id="nextClip" type="button" title="Next recording" aria-label="Next recording"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 5v14"/><path d="m6 6 9 6-9 6z"/></svg></button>
+                      
+                      
+                    <button class="player-icon-button playback-timeline-toggle" id="toggleChapterSidebar" type="button" aria-pressed="false" disabled title="Show recording timeline" aria-label="Show recording timeline"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11"/><path d="M9 12h11"/><path d="M9 18h11"/><path d="M4 6h.01"/><path d="M4 12h.01"/><path d="M4 18h.01"/></svg></button>
                     </div>
                     <div class="player-control-group primary-transport-controls" aria-label="Primary playback controls">
+                      <button class="player-icon-button" id="previousClip" type="button" title="Previous recording" aria-label="Previous recording"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 5v14"/><path d="m18 6-9 6 9 6z"/></svg></button>
                       <button class="seek-button primary-seek-button" type="button" data-seek="-10" title="Back 10 seconds">−10</button>
                       <button class="transport-play" id="playPausePlayback" type="button" aria-keyshortcuts="Space" title="Play / Pause (Space)" aria-label="Play"><svg viewBox="0 0 24 24" aria-hidden="true"><path class="player-play-shape" d="m8 5 11 7-11 7z"/></svg></button>
                       <button class="seek-button primary-seek-button" type="button" data-seek="10" title="Forward 10 seconds">+10</button>
+                      <button class="player-icon-button" id="nextClip" type="button" title="Next recording" aria-label="Next recording"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M18 5v14"/><path d="m6 6 9 6-9 6z"/></svg></button>
                     </div>
                     <div class="player-control-group playback-tool-controls" aria-label="Playback tools">
                       <div class="player-control-group fine-seek-wrap">
@@ -323,40 +359,15 @@
                         <input id="playbackVolume" class="volume-slider" type="range" min="0" max="1" step="0.05" value="1" aria-label="Playback volume" />
                         <select id="playbackSpeed" class="player-speed" aria-label="Playback speed" title="Playback speed"><option value="0.5">0.5×</option><option value="0.75">0.75×</option><option value="1" selected>1×</option><option value="1.25">1.25×</option><option value="1.5">1.5×</option><option value="2">2×</option></select>
                         <button class="player-icon-button" id="playbackFullscreen" type="button" title="Full screen" aria-label="Full screen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 9V4h5"/><path d="M15 4h5v5"/><path d="M20 15v5h-5"/><path d="M9 20H4v-5"/></svg></button>
-                      <button class="player-icon-button playback-timeline-toggle" id="toggleChapterSidebar" type="button" aria-pressed="false" disabled title="Show recording timeline" aria-label="Show recording timeline"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 6h11"/><path d="M9 12h11"/><path d="M9 18h11"/><path d="M4 6h.01"/><path d="M4 12h.01"/><path d="M4 18h.01"/></svg></button>
+                      
                       </div>
                     </div>
                   </div>
                 </div>
-                <aside id="playbackChapterSidebar" class="playback-chapter-sidebar hidden" aria-label="Recording navigation">
-                  <div class="playback-chapter-sidebar-header">
-                    <div><strong>Recording timeline</strong><span>Bookmarks, your voice, and chapters</span></div>
-                    <button id="hideChapterSidebar" type="button" aria-label="Hide recording timeline" title="Hide recording timeline">×</button>
-                  </div>
-                  <div id="playbackChapterSidebarList" class="playback-chapter-sidebar-list"><span class="helper">No timeline items yet.</span></div>
-                </aside>
+
               </div>
 
-              <div id="stickyPlaybackControls" class="sticky-playback-controls" aria-label="Sticky playback controls">
-                <button id="stickyPreviousBookmark" class="sticky-player-icon bookmark" type="button" title="Previous bookmark" aria-label="Previous bookmark">‹◆</button>
-                <button id="stickyAddBookmark" class="sticky-player-icon bookmark add" type="button" title="Add bookmark with marker text (B)" aria-label="Add bookmark at current position with marker text">◆+</button>
-                <button id="stickyDeleteBookmark" class="sticky-player-icon bookmark delete" type="button" disabled title="Delete bookmark at current position" aria-label="Delete bookmark at current position">◆−</button>
-                <button id="stickyNextBookmark" class="sticky-player-icon bookmark" type="button" title="Next bookmark" aria-label="Next bookmark">◆›</button>
-                <span class="sticky-control-divider" aria-hidden="true"></span>
-                <button id="stickySeekBack" class="sticky-player-button" type="button" title="Back 10 seconds">−10</button>
-                <button id="stickyPlayPause" class="sticky-player-play" type="button" title="Play / Pause (Space)" aria-label="Play / Pause">▶</button>
-                <button id="stickySeekForward" class="sticky-player-button" type="button" title="Forward 10 seconds">+10</button>
-                <span id="stickyPlaybackTime" class="sticky-player-time">00:00 / 00:00</span>
-                <input id="stickyPlaybackVolume" class="sticky-player-volume" type="range" min="0" max="1" step="0.05" value="1" aria-label="Playback volume" title="Volume (M toggles mute)" />
-              </div>
-
-              <div id="playbackDetails" class="hidden">
-                <div class="playback-title-row">
-                  <div class="playback-name-group"><strong id="playbackFileName">—</strong><button class="button secondary tiny" id="renamePlaybackFile" type="button">Rename</button></div>
-                  <div class="playback-badges"><span id="playbackMediaBadge" class="mini-badge">Video</span><span id="playbackDurationBadge" class="mini-badge">00:00</span><span id="playbackSizeBadge" class="mini-badge">—</span><span id="subtitleBadge" class="mini-badge hidden" aria-hidden="true">No transcript</span><span id="playbackProcessingBadge" class="mini-badge processing hidden" role="status" aria-live="polite">Ready</span></div>
-                </div>
-
-                <div class="playback-actions-row">
+<div class="playback-actions-row">
                   <button class="button secondary small" id="openPlaybackTranscript" type="button" disabled>Transcript</button>
                   <button class="button secondary small" id="showPlaybackFile" type="button">Show in folder</button>
                   <select id="exportAudioFormat" class="audio-export-format" aria-label="Audio export format" title="Audio export format">
@@ -373,9 +384,34 @@
                     </div>
                   </div>
                 </div>
+                </div>
+
+                
+
+                
 
 
-                <section class="playback-transcript-section hidden" id="transcriptPanel">
+<div id="stickyPlaybackControls" class="sticky-playback-controls" aria-label="Sticky playback controls">
+                <button id="stickyPreviousBookmark" class="sticky-player-icon bookmark" type="button" title="Previous bookmark" aria-label="Previous bookmark">‹◆</button>
+                <button id="stickyAddBookmark" class="sticky-player-icon bookmark add" type="button" title="Add bookmark with marker text (B)" aria-label="Add bookmark at current position with marker text">◆+</button>
+                <button id="stickyDeleteBookmark" class="sticky-player-icon bookmark delete" type="button" disabled title="Delete bookmark at current position" aria-label="Delete bookmark at current position">◆−</button>
+                <button id="stickyNextBookmark" class="sticky-player-icon bookmark" type="button" title="Next bookmark" aria-label="Next bookmark">◆›</button>
+                <span class="sticky-control-divider" aria-hidden="true"></span>
+                <button id="stickySeekBack" class="sticky-player-button" type="button" title="Back 10 seconds">−10</button>
+                <button id="stickyPlayPause" class="sticky-player-play" type="button" title="Play / Pause (Space)" aria-label="Play / Pause">▶</button>
+                <button id="stickySeekForward" class="sticky-player-button" type="button" title="Forward 10 seconds">+10</button>
+                <span id="stickyPlaybackTime" class="sticky-player-time">00:00 / 00:00</span>
+                <input id="stickyPlaybackVolume" class="sticky-player-volume" type="range" min="0" max="1" step="0.05" value="1" aria-label="Playback volume" title="Volume (M toggles mute)" />
+              </div>
+                <aside class="playback-inspector" id="playbackInspector" aria-label="Playback review tools">
+                  <div class="playback-inspector-tabs" role="tablist" aria-label="Playback review tools">
+                    <button id="playbackTranscriptTab" type="button" role="tab" data-playback-tool="transcript" aria-selected="true" aria-controls="playbackTranscriptTool" tabindex="0">Transcript</button>
+                    <button id="playbackInsightsTab" type="button" role="tab" data-playback-tool="insights" aria-selected="false" aria-controls="playbackInsightsTool" tabindex="-1">Insights</button>
+                    <button id="playbackTrimTab" type="button" role="tab" data-playback-tool="trim" aria-selected="false" aria-controls="playbackTrimTool" tabindex="-1">Trim &amp; cuts</button>
+                    <button id="playbackTimelineTab" type="button" role="tab" data-playback-tool="timeline" aria-selected="false" aria-controls="playbackTimelineTool" tabindex="-1">Timeline</button>
+                  </div>
+                  <div class="playback-inspector-tool" id="playbackTranscriptTool" role="tabpanel" aria-labelledby="playbackTranscriptTab" data-playback-panel="transcript">
+<section class="playback-transcript-section hidden" id="transcriptPanel">
                   <div class="panel-heading transcript-heading">
                     <div>
                       <h2>Transcript & subtitles</h2>
@@ -420,8 +456,9 @@
                     <div id="transcriptRawView" class="transcript-raw-view hidden" role="document" aria-label="Raw continuous read-only transcript"></div>
                   </div>
                 </section>
-
-                <section class="insights-panel" id="insightsPanel">
+                  </div>
+                  <div class="playback-inspector-tool hidden" id="playbackInsightsTool" role="tabpanel" aria-labelledby="playbackInsightsTab" data-playback-panel="insights">
+<section class="insights-panel" id="insightsPanel">
                   <div class="insights-heading">
                     <div class="knowledge-collapse-copy insights-title-copy"><strong>Chapters & meeting insights</strong><span>Generated locally from the fixed transcript. Click any timestamp to jump in the recording.</span></div>
                     <div class="insights-heading-actions">
@@ -465,8 +502,18 @@
                     </div>
                   </div>
                 </section>
-
-                <div class="trim-panel">
+                  </div>
+                  <div class="playback-inspector-tool hidden" id="playbackTrimTool" role="tabpanel" aria-labelledby="playbackTrimTab" data-playback-panel="trim">
+                    <section class="bookmark-range-export" id="bookmarkRangeExportSection" aria-labelledby="bookmarkRangeExportHeading">
+                      <div class="bookmark-range-heading"><strong id="bookmarkRangeExportHeading">Export between bookmarks</strong><span>Choose two saved bookmarks. Only the interval between them is exported.</span></div>
+                      <label for="bookmarkRangeStart"><span>Start bookmark</span><select id="bookmarkRangeStart" aria-describedby="bookmarkRangeSummary"><option value="">Choose start bookmark…</option></select></label>
+                      <label for="bookmarkRangeEnd"><span>End bookmark</span><select id="bookmarkRangeEnd" aria-describedby="bookmarkRangeSummary"><option value="">Choose end bookmark…</option></select></label>
+                      <label for="bookmarkRangeKind"><span>Save as</span><select id="bookmarkRangeKind"><option value="clip">Clip · MP4</option><option value="audio">Audio · M4A</option><option value="txt">TXT transcript</option><option value="srt">SRT transcript</option></select></label>
+                      <p class="helper" id="bookmarkRangeSummary" aria-live="polite">Add two bookmarks to this recording to export an interval.</p>
+                      <button class="button primary small" id="exportBookmarkRange" type="button" disabled title="Export only the selected bookmark interval">Export interval</button>
+                      <p class="bookmark-range-status helper" id="bookmarkRangeStatus" role="status" aria-live="polite"></p>
+                    </section>
+<div class="trim-panel">
                   <div class="trim-heading"><strong>Trim recording</strong><span>Drag the start/end handles or use the current playhead. The original remains unchanged.</span></div>
                   <div class="trim-precision-controls">
                     <label class="trim-zoom-control"><span>Waveform zoom</span><input id="trimZoom" type="range" min="1" max="12" step="1" value="1" /><output id="trimZoomValue">1×</output></label>
@@ -504,6 +551,17 @@
                     <div id="cutSummary" class="edit-summary">Original remains unchanged. Add one or more cut ranges to create a cleaned copy.</div>
                   </div>
                 </div>
+                  </div>
+                  <div class="playback-inspector-tool hidden" id="playbackTimelineTool" role="tabpanel" aria-labelledby="playbackTimelineTab" data-playback-panel="timeline">
+<aside id="playbackChapterSidebar" class="playback-chapter-sidebar hidden" aria-label="Recording navigation">
+                  <div class="playback-chapter-sidebar-header">
+                    <div><strong>Recording timeline</strong><span>Bookmarks and chapters</span></div>
+                    <button id="hideChapterSidebar" type="button" aria-label="Hide recording timeline" title="Hide recording timeline">×</button>
+                  </div>
+                  <div id="playbackChapterSidebarList" class="playback-chapter-sidebar-list"><span class="helper">No timeline items yet.</span></div>
+                </aside>
+                  </div>
+                </aside>
 
                 <pre id="playbackTranscriptPreview" class="transcript-preview hidden"></pre>
 
@@ -753,7 +811,7 @@
                   <div class="recording-folder-setting">
                     <div class="recording-folder-copy">
                       <span class="field-label">Recording folder</span>
-                      <code id="recordingFolderPath">Movies/Videos</code>
+                      <code id="recordingFolderPath">Movies/PulseStudio</code>
                     </div>
                     <div class="recording-folder-actions">
                       <button class="button secondary small" id="changeRecordingFolder" type="button">Change…</button>
@@ -788,7 +846,7 @@
                 </div>
 
                 <div class="permission-box" id="permissionBox" role="status" aria-live="polite"><span class="permission-icon" aria-hidden="true">✓</span><span>Permissions are checked when recording starts.</span></div>
-                <div class="autosave-note full-only"><span class="autosave-icon" aria-hidden="true">↘</span><div>Auto-save: <strong id="autosaveFolder">Movies/Videos</strong><br /><span id="autosavePattern">Uses the filename template above</span></div></div>
+                <div class="autosave-note full-only"><span class="autosave-icon" aria-hidden="true">↘</span><div>Auto-save: <strong id="autosaveFolder">Movies/PulseStudio</strong><br /><span id="autosavePattern">Uses the filename template above</span></div></div>
           </div>
         </aside>
 
@@ -900,7 +958,7 @@
         <li>Open <strong>Choose what to record</strong> and select a screen/window thumbnail.</li>
         <li>Choose capture mode (screen/window, region, or all displays). In Recording Controls, select Video + Audio or Audio Only with one click and turn Webcam overlay on or off with the Apple-style switch. Microphone is enabled by default; use the mic icon beside Mic in Audio check for a quick mute/unmute before recording. Use Recording setup for audio/video quality and Recording options for filename, folder, countdown, cursor, and keystrokes. Microphone noise removal defaults to Enhanced voice with adaptive fan/air removal; use Strong when the fan or air flow is very loud.</li>
         <li>Click <strong>Start recording</strong>. While recording, use <strong>Pause/Resume</strong> to temporarily stop capture and continue in the same output, or <strong>Stop recording</strong> to finish.</li>
-        <li>Video recordings save as MP4 and audio-only recordings save as M4A. New media saves to the selected Recording folder; the default is Movies on macOS or Videos on Windows.</li>
+        <li>Video recordings save as MP4 and audio-only recordings save as M4A. New media saves to the selected Recording folder; the default is Movies/PulseStudio on macOS or Videos/PulseStudio on Windows. Automatic transcripts, snapshots and default exports use this folder too. Saved custom folders remain available, and older recordings directly in Movies or Videos stay in Playback.</li>
       </ol>
       <h3>Readiness</h3><p>Before recording, check the readiness strip above Recording Controls. It flags missing sources/regions, microphone/camera permissions, system-audio mode, and low recording-folder storage.</p>
       <h3>Audio-only recording</h3><p>Choose <strong>Audio Only</strong> in the Recording Controls mode switch when you do not need video. Microphone and system audio continue to work, while video-only quality, FPS, cursor, keystroke, and webcam controls are disabled.</p>
@@ -908,19 +966,25 @@
       <h3>Webcam overlay</h3><p>In Recording Controls, click the <strong>Webcam overlay</strong> switch to add or remove your camera with one click. When enabled, choose its camera, position, size, and circular or rounded shape directly beneath the switch.</p>
       <h3>Recording recovery</h3><p>Active recording chunks and session metadata are journaled while recording. If the app exits before Stop is pressed, relaunch PulseStudio; the unfinished source stays protected and a compact <strong>Recover</strong> option appears. Recovery runs only when you choose Recover, can be stopped, and never blocks a new recording.</p>
       <h3>Selected-application audio</h3><p>Choose a window thumbnail and select <strong>Selected application only</strong> under System audio. On macOS this uses ScreenCaptureKit. On supported 64-bit Windows builds it uses WASAPI process-loopback and captures the selected process plus child processes while excluding unrelated application audio.</p>
-      <h3>Snapshots, bookmarks & editing</h3><p>Use <strong>Snapshot</strong> while recording or the camera button in Playback. Use <strong>Bookmark</strong> while recording to mark an important moment. Playback shows bookmarks as timeline markers and provides Previous / Add / Delete / Next bookmark controls in the player toolbar. Single-click Add for a quick marker; double-click Add to type a short keyword or note directly above that marker. Named markers stay visible on the waveform, appear briefly over the video when playback reaches them, and can be double-clicked on the waveform to edit their text. Snapshots save beside recordings. For a simple trim, adjust the waveform-backed start/end handles and save a trimmed copy. To remove several unwanted sections, select each range, choose <strong>+ Add selected range</strong>, then <strong>Save cleaned copy</strong>. All editing is non-destructive and the original recording is never overwritten. <strong>Export audio</strong> creates an M4A or MP3 audio-only copy of the selected recording.</p><h3>Transcript search</h3>
-      <p>After a recording is saved, its transcript is generated automatically. Search inside <strong>Transcript & subtitles</strong>; matches jump the video directly to that moment. Choose <strong>Raw</strong> (default), <strong>Speakers</strong>, or <strong>Timecoded</strong>. Speaker view uses local speaker detection and starts a new paragraph when the detected speaker changes. The transcript remains read-only, but you can copy, export, or turn on <strong>CC</strong>.</p>
-      <h3>Library search</h3><p>The Playback search field searches filenames, categories, and locally saved transcript text.</p>
+      <h3>Meeting audio on speakers</h3><p>Whenever the microphone is enabled, PulseStudio automatically uses the strongest supported speaker echo cancellation and checks that it is active. This works independently of the Computer Audio setting. Choose <strong>Off</strong>, <strong>Standard</strong>, <strong>Enhanced voice</strong>, or <strong>Strong</strong> under Recording setup → Noise removal; Enhanced voice is a good starting point for fan or air noise. Results depend on your microphone, speaker volume, and room. Available microphone and computer-audio source tracks are kept locally with the recording for recovery and troubleshooting; they follow rename and Trash.</p>
+      <h3>Snapshots, bookmarks & editing</h3><p>Use <strong>Snapshot</strong> while recording or the camera button in Playback. Use <strong>Bookmark</strong> while recording to mark an important moment. Playback shows bookmarks as timeline markers and provides Previous / Add / Delete / Next bookmark controls in the player toolbar. Single-click Add for a quick marker; double-click Add to type a short keyword or note directly above that marker. Named markers stay visible on the waveform, appear briefly over the video when playback reaches them, and can be double-clicked on the waveform to edit their text. Snapshots save beside recordings. For a simple trim, adjust the waveform-backed start/end handles and save a trimmed copy. To remove several unwanted sections, select each range, choose <strong>+ Add selected range</strong>, then <strong>Save cleaned copy</strong>. All editing is non-destructive and the original recording is never overwritten. <strong>Export audio</strong> creates an M4A or MP3 audio-only copy of the selected recording.</p><h3>Export between bookmarks</h3><p>In Playback → <strong>Trim &amp; cuts</strong>, choose two saved bookmarks under <strong>Export between bookmarks</strong>. Choose <strong>Clip · MP4</strong>, <strong>Audio · M4A</strong>, <strong>TXT transcript</strong>, or <strong>SRT transcript</strong>, then <strong>Export interval</strong>. Only the section between those bookmarks is saved. The start must precede the end. Audio-only recordings offer Audio, TXT and SRT. If a transcript sentence crosses a bookmark or usable timings are missing, the app transcribes just that interval. SRT times start at the exported interval. The original stays selected and unchanged.</p><h3>Transcript search</h3>
+      <p>After a recording is saved, its transcript is generated automatically in the background. The local speech model is reused between jobs without reducing the existing quality settings; first loading and long recordings can still take time. Search inside <strong>Transcript & subtitles</strong>; matches jump the video directly to that moment. Choose <strong>Raw</strong> (default), <strong>Speakers</strong>, or <strong>Timecoded</strong>. Speaker view uses local speaker detection and starts a new paragraph when the detected speaker changes. The transcript remains read-only, but you can copy, export, or turn on <strong>CC</strong>.</p>
+      <h3>Library search</h3><p>The Playback search field searches filenames, categories, and locally saved transcript text. Use <strong>Sort</strong> above Category for date, duration, name, or file size, in either direction. Your choice is remembered and Previous/Next follows the displayed order.</p>
       <h3>Chapters, meeting summary & action items</h3><p>After transcription, Playback automatically creates local chapters, an extractive meeting summary, and likely action items from the transcript. Chapter, summary, and action-item timestamps jump directly to the matching moment. Meeting insights are cached locally and can be regenerated without an API key.</p>
       <h3>Keyboard shortcuts</h3><p>Command/Ctrl+Alt+R Record/Stop · P Pause/Resume · B Bookmark · S Snapshot · M Full/Mini Controller. Press <strong>F1</strong> or <strong>?</strong> anytime for the complete shortcut reference. A shortcut may be unavailable if the operating system or another app already owns it.</p>
       <h3>Playback & subtitles</h3>
+      <p><strong>Studio Desk</strong> keeps the recording library beside the player. Use the tools inspector for <strong>Transcript</strong>, <strong>Insights</strong>, <strong>Trim &amp; cuts</strong>, and <strong>Timeline</strong>. In a narrower window, the inspector moves below the player. Transcript views, search, speaker corrections, captions, bookmarks, snapshots, audio exports, categories, favorites, and batch selection remain available.</p>
       <p>Open the <strong>Playback</strong> tab, choose a recorded clip, and turn on <strong>CC</strong> in the player when the transcript is ready. Use <strong>Rename</strong> to rename the MP4 and transcript files together. Use the small category selector beneath the Rename/Trash controls to organize clips. The trash icon moves the recording and the matching TXT transcript file (and any legacy SRT file) to your operating system Trash after confirmation, so they can be restored if needed.</p>
       <h3>Full View and Mini Controller</h3>
-      <p>Use the <strong>Full / Mini</strong> switch in the title bar. Full View includes recording and Playback. Mini Controller is recording-only and keeps essential status and recording controls visible while staying out of the way. Recording setup, Recording options, and App & AI tools remain in Full View.</p>
+      <p>Click <strong>Open Mini Controller</strong> above the Record or Playback workspace to keep recording controls on screen. Full View includes your existing recording setup, options, Playback, editing, transcription, and App & AI tools. The Mini window keeps its original compact size and is recording-only. Choose <strong>Video + Audio</strong> with the camera icon or <strong>Audio Only</strong> with the waveform icon before you start; hover over either icon for its hint. During recording, the small mode icon confirms your choice next to the timer. Microphone mute, Pause/Resume, Bookmark, Stop, and live audio meters remain close at hand. Use the expand icon in Mini's toolbar to open <strong>Full View</strong> for the rest of your tools. Adding a bookmark replaces the lower meter and status area with its optional text editor while Stop stays available. You have <strong>3 seconds</strong> to start entering a note. Once you start typing, the editor stays open until you save it with <strong>Save</strong> or <strong>Enter</strong>, or dismiss it.</p>
+      <h3>Appearance</h3>
+      <p>New installs start in light appearance. Use the sun/moon icon to switch between light and dark; your choice is remembered. <strong>Themes</strong> in Full View keeps both Classic and Studio available. Mini's Start and Stop buttons use a soft blue surface; the button label and recording status tell you which action is available.</p>
       <h3>Window transparency</h3>
-      <p>Transparency applies only to <strong>Mini View</strong>. Full View always remains fully opaque. Use the ◐ icon to choose 0%, 10%, 20%, 30%, or 50% for Mini View; the setting is remembered. If you choose a level while in Full View, PulseStudio explicitly tells you that it will take effect only after you switch to Mini View.</p>
-      <h3>macOS permissions</h3>
-      <p>If recording or microphone capture is blocked, open System Settings → Privacy & Security and enable Screen & System Audio Recording and Microphone access for the app/Terminal, then restart PulseStudio.</p>
+      <p>In <strong>Mini View</strong>, drag the small transparency bar from <strong>0% to 75%</strong>, or use the arrow keys while the bar is focused. 0% is fully opaque and 75% is the most transparent. Your choice is remembered. Full View stays fully opaque and has no transparency control.</p>
+      <h3>Control hints</h3>
+      <p>Rest the pointer on a control for a moment, or focus it with the keyboard, to see a short hint. Hints appear outside the Mini window so they do not cover its timer or buttons. Clicking, dragging, scrolling, switching windows, or pressing Escape dismisses the hint.</p>
+      <h3>Mac Dock name</h3><p>The prepared Mac runtime shows <strong>Pulse Studio</strong> in the Dock. The launcher preserves the existing host code identity; macOS privacy settings may still label it Electron. A sealed or unfamiliar runtime keeps its original display name so naming cannot block launch.</p><h3>macOS permissions</h3>
+      <p>If recording or microphone capture is blocked, open System Settings → Privacy & Security and enable Screen & System Audio Recording and Microphone access for the app requesting access, then reopen PulseStudio. The shared package opens with <strong>PulseStudio.app</strong> on Mac or <strong>Start PulseStudio - Windows.bat</strong> on Windows.</p>
       <h3>Windows permissions</h3>
       <p>If microphone capture is blocked, check Settings → Privacy & security → Microphone. System audio uses Windows loopback capture.</p>
       <h3>Diagnostic logs</h3><p>PulseStudio keeps rotating troubleshooting logs in the child <strong>logs</strong> folder. Open <strong>About & Diagnostics → Open logs</strong> when you need to inspect or share a recording failure. The log contains runtime, capture, encoder, recovery, CPU/memory, and error details; it does not contain recorded audio or video content.</p>
@@ -948,7 +1012,7 @@
         <button class="button primary" id="exportDiagnostics" type="button">Export Diagnostics ZIP</button>
       </section>
       <div class="diagnostics-checklist" aria-label="App health checks">
-        <div><span>App version</span><strong id="aboutVersion">0.2.129</strong></div>
+        <div><span>App version</span><strong id="aboutVersion">0.2.140</strong></div>
         <div><span>Screen access</span><strong id="diagnosticScreenPermission">Checking…</strong></div>
         <div><span>Microphone</span><strong id="diagnosticMicPermission">Checking…</strong></div>
         <div><span>Camera</span><strong id="diagnosticCameraPermission">Checking…</strong></div>
@@ -1092,6 +1156,7 @@
   <script src="modules/recording-estimate.js"></script>
   <script src="modules/speaker-tools.js"></script>
   <script src="modules/trim-tools.js"></script>
+  <script src="modules/speaker-audio-policy.js"></script>
   <script src="app.js"></script>
 </body>
 </html>

@@ -21,10 +21,13 @@ files:
   - package.json
   - entitlements.mac.plist
   - update-feed.json
+  - "!native/macos/window-controls.node"
 directories:
   output: dist-production
 forceCodeSigning: true
 mac:
+  files:
+    - native/macos/window-controls.node
   icon: assets/pulsestudio-icon.icns
   target:
     - dmg

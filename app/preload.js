@@ -91,6 +91,7 @@ contextBridge.exposeInMainWorld('recorderAPI', {
   trimRecording: (recordingPath, startSeconds, endSeconds) => ipcRenderer.invoke('recording:trim', { recordingPath, startSeconds, endSeconds }),
   multiTrimRecording: (recordingPath, cutSegments) => ipcRenderer.invoke('recording:multi-trim', { recordingPath, cutSegments }),
   exportRecordingAudio: (recordingPath, format = 'm4a') => ipcRenderer.invoke('recording:export-audio', { recordingPath, format }),
+  exportMarkerRange: (payload) => ipcRenderer.invoke('recording:export-marker-range', payload || {}),
 
   setCompactMode: (compact) => ipcRenderer.invoke('window:set-compact', Boolean(compact)),
   getWindowViewState: () => ipcRenderer.invoke('window:get-view-state'),
@@ -102,6 +103,8 @@ contextBridge.exposeInMainWorld('recorderAPI', {
   endWindowDrag: () => ipcRenderer.send('window:drag-end'),
   setCompactExpanded: (expanded) => ipcRenderer.invoke('window:set-compact-expanded', Boolean(expanded)),
   setWindowTransparency: (percent) => ipcRenderer.invoke('window:set-transparency', Number(percent)),
+  showWindowTooltip: (payload) => ipcRenderer.invoke('window:show-tooltip', payload),
+  hideWindowTooltip: () => ipcRenderer.send('window:hide-tooltip'),
   setRecordingPerformanceMode: (enabled) => ipcRenderer.invoke('window:set-recording-performance', Boolean(enabled)),
   setAlwaysOnTop: (enabled) => ipcRenderer.invoke('window:set-always-on-top', Boolean(enabled)),
   getWindowCapturePrivacy: () => ipcRenderer.invoke('window:get-capture-privacy'),

@@ -1,6 +1,6 @@
 {
   "name": "pulsestudio",
-  "version": "0.2.129",
+  "version": "0.2.140",
   "description": "PulseStudio - your intelligent workspace for screen, voice, and playback.",
   "main": "main.js",
   "author": "Girish Gupta <girish.gupta@gmail.com>",
@@ -51,12 +51,16 @@
       "entitlements.mac.plist",
       "package.json",
       "update-feed.json",
-      "analytics-config.json"
+      "analytics-config.json",
+      "!native/macos/window-controls.node"
     ],
     "directories": {
       "output": "dist"
     },
     "mac": {
+      "files": [
+        "native/macos/window-controls.node"
+      ],
       "target": [
         "dmg",
         "zip"

@@ -4,8 +4,8 @@ const $ = (id) => document.getElementById(id);
 // This deliberately leaves speaker diarization/transcription unchanged.
 const MY_VOICE_HIGHLIGHTS_ENABLED = false;
 
-const FAST_TOOLTIP_DELAY_MS = 120;
-const FAST_TOOLTIP_MINI_MODE_DELAY_MS = 90;
+const FAST_TOOLTIP_DELAY_MS = 650;
+const FAST_TOOLTIP_MINI_MODE_DELAY_MS = 650;
 const fastTooltipState = {
   target: null,
   text: '',
@@ -13,7 +13,9 @@ const fastTooltipState = {
   tooltip: null,
   previousDescribedBy: null,
   mutationObserver: null,
-  suppressHoverUntil: 0
+  suppressHoverUntil: 0,
+  nativeVisible: false,
+  revision: 0
 };
 
 function fastTooltipTarget(node) {
@@ -23,8 +25,63 @@ function fastTooltipTarget(node) {
 
 function fastTooltipDelay(target) {
   const requested = Number(target?.dataset?.tooltipDelay);
-  if (Number.isFinite(requested) && requested >= 0) return requested;
+  if (Number.isFinite(requested) && requested >= FAST_TOOLTIP_DELAY_MS) return requested;
   return target?.classList?.contains('compact-record-kind-button') ? FAST_TOOLTIP_MINI_MODE_DELAY_MS : FAST_TOOLTIP_DELAY_MS;
+}
+
+function naturalTooltipText(target) {
+  const common = {
+    compactFullViewButton: 'Open Full View', compactViewButton: 'Open Mini Controller',
+    fullViewButton: 'Open Full View', helpButton: 'Help', aboutButton: 'About & Diagnostics',
+    themesButton: 'Choose a theme', refreshSources: 'Refresh sources',
+    refreshRecordings: 'Refresh recordings', openRecordingsFolder: 'Open recordings folder', compactOpenRecordingsFolderButton: 'Open recordings folder',
+    compactBookmarkButton: 'Add a bookmark', transparencySlider: 'Mini transparency',
+    compactRecordingKindVideoButton: target?.getAttribute('aria-pressed') === 'true' ? 'Video + Audio selected' : 'Record Video + Audio',
+    compactRecordingKindAudioButton: target?.getAttribute('aria-pressed') === 'true' ? 'Audio Only selected' : 'Record Audio Only'
+  };
+  if (common[target?.id]) return common[target.id];
+  const original = String(target?.getAttribute('title') || target?.dataset?.fastTooltipTitle || '').trim();
+  return original.replace(/Mini Controller/g, 'Mini View').replace(/^Keep Mini View above other windows$/, 'Keep Mini on top');
+}
+
+async function revealFastTooltip(target) {
+  const tooltip = fastTooltipState.tooltip;
+  if (!target || fastTooltipState.target !== target || !tooltip) return;
+  const revision = fastTooltipState.revision;
+  const rect = target.getBoundingClientRect();
+  const inMiniHeader = document.body.classList.contains('compact-mode') && Boolean(target.closest('.topbar'));
+  const placement = inMiniHeader ? 'top' : 'bottom';
+  const text = naturalTooltipText(target);
+  fastTooltipState.text = text;
+  tooltip.textContent = text;
+  // The tooltip remains in the accessibility tree even when a separate native
+  // hint window draws it outside this application's content area.
+  tooltip.setAttribute('aria-hidden', 'false');
+  if (typeof window.recorderAPI?.showWindowTooltip === 'function') {
+    try {
+      const result = await window.recorderAPI.showWindowTooltip({
+        text, anchor: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+        placement, theme: document.documentElement.dataset.theme === 'light' ? 'light' : 'dark'
+      });
+      if (revision !== fastTooltipState.revision || fastTooltipState.target !== target) return;
+      if (result === true || result?.shown === true) {
+        fastTooltipState.nativeVisible = true;
+        tooltip.classList.add('native-tooltip-description');
+        return;
+      }
+    } catch {}
+  }
+  if (revision !== fastTooltipState.revision || fastTooltipState.target !== target) return;
+  if (document.body.classList.contains('compact-mode')) {
+    // A Mini hint must never compete with the timer or controls. When a native
+    // companion hint is unavailable, keep its accessible description only.
+    tooltip.classList.add('native-tooltip-description');
+    return;
+  }
+  tooltip.classList.remove('native-tooltip-description');
+  if (tooltip.showPopover && !tooltip.matches(':popover-open')) tooltip.showPopover();
+  positionFastTooltip();
+  tooltip.classList.add('is-visible');
 }
 
 function positionFastTooltip() {
@@ -49,24 +106,15 @@ function positionFastTooltip() {
 
 function restoreFastTooltipTarget(target) {
   if (!target) return;
-  const stored = target.dataset.fastTooltipTitle;
-  const customOnly = target.dataset.tooltipCustomOnly === 'true';
-  if (customOnly) {
-    // Keep custom-only help out of the native browser title system. Native title
-    // bubbles can become sticky when a compact Electron window is activated,
-    // moved, or restored underneath the pointer.
-    target.removeAttribute('title');
-    if (stored != null) target.dataset.fastTooltipTitle = stored;
-  } else {
-    if (stored != null && !target.hasAttribute('title')) target.setAttribute('title', stored);
-    delete target.dataset.fastTooltipTitle;
-  }
+  // One hint system avoids a second browser title bubble lingering after ours.
+  target.removeAttribute('title');
   const previous = fastTooltipState.previousDescribedBy;
   if (previous == null) target.removeAttribute('aria-describedby');
   else target.setAttribute('aria-describedby', previous);
 }
 
 function hideFastTooltip() {
+  fastTooltipState.revision += 1;
   clearTimeout(fastTooltipState.showTimer);
   fastTooltipState.showTimer = null;
   const target = fastTooltipState.target;
@@ -74,19 +122,22 @@ function hideFastTooltip() {
   fastTooltipState.text = '';
   restoreFastTooltipTarget(target);
   fastTooltipState.previousDescribedBy = null;
+  fastTooltipState.nativeVisible = false;
+  try { window.recorderAPI?.hideWindowTooltip?.(); } catch {}
   const tooltip = fastTooltipState.tooltip;
   if (!tooltip) return;
   tooltip.classList.remove('is-visible');
+  tooltip.classList.remove('native-tooltip-description');
   tooltip.setAttribute('aria-hidden', 'true');
   if (tooltip.matches?.(':popover-open')) tooltip.hidePopover?.();
 }
 
 function showFastTooltip(target) {
   if (!target || target === fastTooltipState.target) return;
-  if (target.dataset.tooltipHoverOnly === 'true' && Date.now() < fastTooltipState.suppressHoverUntil) return;
+  if (Date.now() < fastTooltipState.suppressHoverUntil) return;
   if (document.body.classList.contains('manual-window-dragging')) return;
   hideFastTooltip();
-  const text = String(target.getAttribute('title') || target.dataset.fastTooltipTitle || '').trim();
+  const text = naturalTooltipText(target);
   if (!text) return;
 
   target.dataset.fastTooltipTitle = text;
@@ -102,20 +153,14 @@ function showFastTooltip(target) {
 
   fastTooltipState.showTimer = setTimeout(() => {
     if (fastTooltipState.target !== target || !document.documentElement.contains(target)) return;
-    if (tooltip.showPopover && !tooltip.matches(':popover-open')) tooltip.showPopover();
-    tooltip.setAttribute('aria-hidden', 'false');
-    positionFastTooltip();
-    // Make hover help visible immediately after the configured delay. Avoid an
-    // extra animation-frame wait so icon-only controls feel responsive even
-    // when the renderer is busy with layout/media work.
-    tooltip.classList.add('is-visible');
+    revealFastTooltip(target);
   }, fastTooltipDelay(target));
 }
 
 function showFastTooltipForClick(target, duration = 1800) {
   if (!target || document.body.classList.contains('manual-window-dragging')) return;
   hideFastTooltip();
-  const text = String(target.getAttribute('title') || target.dataset.fastTooltipTitle || '').trim();
+  const text = naturalTooltipText(target);
   if (!text) return;
 
   target.dataset.fastTooltipTitle = text;
@@ -128,10 +173,7 @@ function showFastTooltipForClick(target, duration = 1800) {
   const describedBy = [fastTooltipState.previousDescribedBy, tooltip.id].filter(Boolean).join(' ');
   target.setAttribute('aria-describedby', describedBy);
   tooltip.textContent = text;
-  if (tooltip.showPopover && !tooltip.matches(':popover-open')) tooltip.showPopover();
-  tooltip.setAttribute('aria-hidden', 'false');
-  positionFastTooltip();
-  tooltip.classList.add('is-visible');
+  revealFastTooltip(target);
   fastTooltipState.showTimer = setTimeout(() => {
     if (fastTooltipState.target === target) hideFastTooltip();
   }, Math.max(700, Number(duration) || 1800));
@@ -147,6 +189,10 @@ function initFastTooltips() {
   tooltip.setAttribute('popover', 'manual');
   document.body.appendChild(tooltip);
   fastTooltipState.tooltip = tooltip;
+  document.querySelectorAll('[title]').forEach((target) => {
+    target.dataset.fastTooltipTitle = target.getAttribute('title') || '';
+    target.removeAttribute('title');
+  });
 
   document.addEventListener('pointerover', (event) => {
     const target = fastTooltipTarget(event.target);
@@ -178,21 +224,21 @@ function initFastTooltips() {
     hideFastTooltip();
   });
   window.addEventListener('blur', hideFastTooltip);
-  window.addEventListener('resize', positionFastTooltip, { passive: true });
-  window.addEventListener('scroll', positionFastTooltip, { passive: true, capture: true });
+  window.addEventListener('resize', hideFastTooltip, { passive: true });
+  window.addEventListener('scroll', hideFastTooltip, { passive: true, capture: true });
+  document.addEventListener('keydown', (event) => { if (event.key === 'Escape') hideFastTooltip(); }, true);
 
   fastTooltipState.mutationObserver = new MutationObserver((records) => {
-    const active = fastTooltipState.target;
-    if (!active) return;
     for (const record of records) {
-      if (record.target !== active || record.attributeName !== 'title' || !active.hasAttribute('title')) continue;
-      const updated = String(active.getAttribute('title') || '').trim();
-      if (!updated) continue;
-      active.dataset.fastTooltipTitle = updated;
-      active.removeAttribute('title');
-      fastTooltipState.text = updated;
-      tooltip.textContent = updated;
-      positionFastTooltip();
+      const target = record.target;
+      if (record.attributeName !== 'title' || !target.hasAttribute('title')) continue;
+      target.dataset.fastTooltipTitle = target.getAttribute('title') || '';
+      target.removeAttribute('title');
+      if (fastTooltipState.target === target) {
+        fastTooltipState.text = naturalTooltipText(target);
+        tooltip.textContent = fastTooltipState.text;
+        if (fastTooltipState.nativeVisible || tooltip.classList.contains('is-visible')) revealFastTooltip(target);
+      }
     }
   });
   fastTooltipState.mutationObserver.observe(document.documentElement, { subtree: true, attributes: true, attributeFilter: ['title'] });
@@ -317,6 +363,7 @@ const state = {
   categories: [],
   categoryFilter: '__all__',
   libraryQuickFilter: 'all',
+  librarySort: normalizeLibrarySort(localStorage.getItem('librarySort')),
   favoriteRecordingPaths: loadFavoriteRecordingPaths(),
   selectedPlaybackPath: null,
   playbackTranscript: { text: '', srt: '' },
@@ -360,6 +407,8 @@ const state = {
   waveformSamples: [],
   waveformHasAudio: false,
   playbackMarkers: [],
+  bookmarkRangeRecordingPath: null,
+  bookmarkRangeExportBusy: false,
   playbackVoiceHighlights: [],
   voiceHighlightsVisible: localStorage.getItem('voiceHighlightsVisible') !== '0',
   pendingMarkers: [],
@@ -508,6 +557,7 @@ function setStatus(message, isError = false) {
   const compactStatus = $('compactStatus');
   if (compactStatus) {
     compactStatus.textContent = text || '';
+    compactStatus.dataset.fastTooltipTitle = text || '';
     compactStatus.classList.toggle('error', isError);
   }
 }
@@ -564,8 +614,8 @@ function friendlyAiDetail(detail) {
 }
 
 function compactDesiredContentHeight() {
-  // v0.2.57: the normal Mini HUD is intentionally fixed at 262 x 84. Only an
-  // explicitly expanded compact setup is allowed to request extra vertical space.
+  // Preserve the original Mini footprint; temporary bookmark entry uses its
+  // lower information area without changing the live recording action row.
   if (state.compactCaptureCollapsed) return 84;
   const shell = document.querySelector('.app-shell');
   if (!shell) return 84;
@@ -596,6 +646,7 @@ function showCompactFeedback(message, duration = 1700) {
   if (!target || !message) return;
   clearTimeout(state.compactFeedbackTimer);
   target.textContent = message;
+  target.dataset.fastTooltipTitle = message;
   target.classList.remove('hidden');
   requestAnimationFrame(() => { target.classList.add('show'); scheduleCompactWindowFit(); });
   state.compactFeedbackTimer = setTimeout(() => {
@@ -1280,6 +1331,10 @@ async function startRecordingMicrophoneOnDemand(source = 'mini-controller') {
     if (state.activeRecordingMeta) {
       state.activeRecordingMeta.microphoneStartOffsetMs = state.recordingMicStartOffsetMs;
       state.activeRecordingMeta.neuralMicrophoneMethod = state.neuralMicMethod || 'none';
+      state.activeRecordingMeta.microphoneCapture = window.PulseSpeakerAudioPolicy.describeCapture({
+        sourceStream: state.micStream, speechFallbackStream: state.speechMicStream,
+        processedStream: state.processedMicStream, noiseMethod: state.neuralMicMethod
+      });
     }
     state.micRecorder = createRawMicrophoneRecorder(state.micStream);
     state.neuralMicRecorder = createNeuralMicrophoneRecorder(state.processedMicStream);
@@ -1488,6 +1543,7 @@ function updatePauseButtons(paused) {
 }
 
 async function applyViewMode(mode, resizeWindow = true) {
+  hideFastTooltip();
   const compact = mode === 'compact';
   state.viewMode = compact ? 'compact' : 'full';
   document.body.classList.toggle('compact-mode', compact);
@@ -1498,7 +1554,7 @@ async function applyViewMode(mode, resizeWindow = true) {
   $('fullViewButton').setAttribute('aria-pressed', String(!compact));
   $('compactViewButton').setAttribute('aria-pressed', String(compact));
   $('playbackWorkspaceTab').classList.toggle('hidden', compact);
-  $('brandTitle').textContent = compact ? 'Mini Controller' : 'Capture, play back, and transcribe';
+  $('brandTitle').textContent = compact ? 'Mini Controller' : 'PulseStudio';
   if ($('compactCaptureMode')) $('compactCaptureMode').value = $('captureMode')?.value || 'source';
   if ($('compactQuality')) $('compactQuality').value = $('quality')?.value || '1080';
   if ($('compactFrameRate')) $('compactFrameRate').value = $('frameRate')?.value || '30';
@@ -1508,7 +1564,12 @@ async function applyViewMode(mode, resizeWindow = true) {
   if (resizeWindow) {
     if (compact) stopPreflightMicMonitor();
     else if (state.currentWorkspace === 'capture' && (!state.mediaRecorder || state.mediaRecorder.state === 'inactive')) refreshPreflightMicMonitor();
-    try { await window.recorderAPI.setCompactMode(compact); } catch {}
+    try {
+      const result = await window.recorderAPI.setCompactMode(compact);
+      if (result && typeof result === 'object' && 'nativeMiniControls' in result) {
+        document.documentElement.dataset.nativeMiniControls = result.nativeMiniControls === true ? 'true' : 'false';
+      }
+    } catch {}
     if (compact) {
       const active = Boolean(state.mediaRecorder && state.mediaRecorder.state !== 'inactive');
       try { await window.recorderAPI.setCompactRecordingState?.(active); } catch {}
@@ -1652,28 +1713,23 @@ function wireWindowDragging() {
   window.addEventListener('blur', finish);
 }
 
-async function applyTransparency(percent, persist = true) {
-  const allowed = [0, 10, 20, 30, 50];
+function normalizeMiniTransparency(percent) {
   const requested = Number(percent);
-  const value = allowed.includes(requested) ? requested : 0;
+  return Number.isFinite(requested) ? Math.min(75, Math.max(0, Math.round(requested))) : 0;
+}
+
+async function applyTransparency(percent, persist = true) {
+  const value = normalizeMiniTransparency(percent);
   state.transparencyPercent = value;
-  try { await window.recorderAPI.setWindowTransparency(value); } catch {}
-  if ($('transparencyButton')) {
-    const valueLabel = $('transparencyValue');
-    if (valueLabel) valueLabel.textContent = state.viewMode === 'compact' ? `${value}%` : `Mini ${value}%`;
-    const transparencyHelp = state.viewMode === 'compact'
-      ? `Mini View transparency: ${value}%`
-      : `Mini View transparency: ${value}% — Full View stays opaque; switch to Mini View to see this setting.`;
-    $('transparencyButton').removeAttribute('title');
-    $('transparencyButton').dataset.fastTooltipTitle = transparencyHelp;
-    $('transparencyButton').setAttribute('aria-label', transparencyHelp);
-    $('transparencyButton').classList.toggle('mini-only-setting-pending', state.viewMode !== 'compact' && value > 0);
-    if (fastTooltipState.target === $('transparencyButton')) {
-      fastTooltipState.text = transparencyHelp;
-      if (fastTooltipState.tooltip) fastTooltipState.tooltip.textContent = transparencyHelp;
-    }
+  const slider = $('transparencySlider');
+  if (slider) {
+    slider.value = String(value);
+    slider.setAttribute('aria-valuetext', `${value}% transparent`);
   }
+  if ($('transparencyValue')) $('transparencyValue').textContent = `${value}%`;
+  if ($('transparencyButton')) $('transparencyButton').setAttribute('aria-label', `Mini transparency: ${value}%`);
   if (persist) localStorage.setItem('transparencyPercent', String(value));
+  try { await window.recorderAPI.setWindowTransparency(value); } catch {}
 }
 
 async function applyAlwaysOnTop(enabled, persist = true) {
@@ -1768,8 +1824,9 @@ function applyPlaybackSidebarWidth(width, persist = true) {
   const layout = document.querySelector('.playback-layout');
   if (!layout) return;
   const available = Math.max(700, layout.clientWidth || 1000);
-  const maxWidth = Math.max(300, Math.min(560, available - 500));
-  const value = Math.round(clamp(Number(width) || 300, 220, maxWidth));
+  const inspectorBesidePlayer = window.matchMedia('(min-width: 1181px)').matches;
+  const maxWidth = Math.max(220, Math.min(420, available - (inspectorBesidePlayer ? 720 : 430)));
+  const value = Math.round(clamp(Number(width) || 260, 220, maxWidth));
   state.playbackSidebarWidth = value;
   layout.style.setProperty('--playlist-width', `${value}px`);
   const splitter = $('playbackSplitter');
@@ -1785,7 +1842,7 @@ function initPlaybackSplitter() {
   const splitter = $('playbackSplitter');
   const layout = document.querySelector('.playback-layout');
   if (!splitter || !layout) return;
-  applyPlaybackSidebarWidth(Number(localStorage.getItem('playbackSidebarWidth') || 300), false);
+  applyPlaybackSidebarWidth(Number(localStorage.getItem('playbackSidebarWidth') || 260), false);
 
   let dragging = false;
   const move = (event) => {
@@ -1815,6 +1872,48 @@ function initPlaybackSplitter() {
     applyPlaybackSidebarWidth(state.playbackSidebarWidth + (event.key === 'ArrowRight' ? 20 : -20));
   });
   window.addEventListener('resize', () => { applyPlaybackSidebarWidth(state.playbackSidebarWidth, false); scheduleWaveformRender(); });
+}
+
+function setPlaybackInspectorTool(requestedTool, persist = true) {
+  const inspector = $('playbackInspector');
+  if (!inspector) return;
+  const tool = ['transcript', 'insights', 'trim', 'timeline'].includes(requestedTool) ? requestedTool : 'transcript';
+  inspector.dataset.activeTool = tool;
+  inspector.querySelectorAll('[data-playback-panel]').forEach((panel) => {
+    panel.classList.toggle('hidden', panel.dataset.playbackPanel !== tool);
+  });
+  inspector.querySelectorAll('[data-playback-tool]').forEach((tab) => {
+    const selected = tab.dataset.playbackTool === tool;
+    tab.setAttribute('aria-selected', String(selected));
+    tab.tabIndex = selected ? 0 : -1;
+  });
+  state.chapterSidebarVisible = tool === 'timeline';
+  if (persist) {
+    localStorage.setItem('playbackInspectorTool', tool);
+    localStorage.setItem('chapterSidebarVisible', state.chapterSidebarVisible ? '1' : '0');
+  }
+  renderPlaybackChapterSidebar();
+  requestAnimationFrame(scheduleWaveformRender);
+}
+
+function initPlaybackInspector() {
+  const inspector = $('playbackInspector');
+  if (!inspector) return;
+  const tabs = [...inspector.querySelectorAll('[data-playback-tool]')];
+  tabs.forEach((tab, index) => {
+    tab.addEventListener('click', () => setPlaybackInspectorTool(tab.dataset.playbackTool));
+    tab.addEventListener('keydown', (event) => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const target = event.key === 'Home' ? 0 : event.key === 'End' ? tabs.length - 1
+        : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+      setPlaybackInspectorTool(tabs[target].dataset.playbackTool);
+      tabs[target].focus();
+    });
+  });
+  const savedTool = localStorage.getItem('playbackInspectorTool');
+  setPlaybackInspectorTool(savedTool || (state.chapterSidebarVisible ? 'timeline' : 'transcript'), false);
 }
 
 function renderCompactSourcePicker() {
@@ -2404,7 +2503,7 @@ function renderPlaybackChapterSidebar() {
     const icon = item.type === 'bookmark' ? '◆' : item.type === 'voice' ? '●' : '§';
     const edit = item.type === 'bookmark' ? `<button type="button" class="playback-chapter-edit" data-chapter-edit-bookmark="${escapeHtml(item.id)}" aria-label="Edit bookmark text">Edit</button>` : '';
     return `<div class="playback-chapter-row playback-chapter-${item.type}"><button type="button" class="playback-chapter-jump" data-chapter-seconds="${item.seconds}"><span class="playback-chapter-icon" aria-hidden="true">${icon}</span><time>${escapeHtml(formatDuration(item.seconds, '00:00'))}</time><span class="playback-chapter-copy"><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.detail)}</small></span></button>${edit}</div>`;
-  }).join('') : '<span class="helper">Bookmarks, My Voice sections, and generated chapters will appear here.</span>';
+  }).join('') : '<span class="helper">Bookmarks and generated chapters will appear here.</span>';
   list.querySelectorAll('[data-chapter-seconds]').forEach((button) => button.addEventListener('click', () => jumpPlaybackTo(Number(button.dataset.chapterSeconds) || 0, true)));
   list.querySelectorAll('[data-chapter-edit-bookmark]').forEach((button) => button.addEventListener('click', (event) => {
     event.preventDefault(); event.stopPropagation();
@@ -2436,6 +2535,7 @@ function renderPlaybackMarkers() {
   // rendered directly on the waveform so they behave like playback markers.
   updatePlaybackBookmarkNavigation();
   renderPlaybackChapterSidebar();
+  renderBookmarkRangeExport();
 }
 
 async function loadPlaybackEnhancements(recordingPath, selectionToken) {
@@ -2985,7 +3085,7 @@ function openRecordingBookmarkTextEditor(marker) {
   scheduleCompactWindowFit();
   requestAnimationFrame(() => { input.focus(); input.select(); });
 
-  // Mini Controller gives the user a one-second grace period to start typing.
+  // Mini Controller gives the user a three-second grace period to start typing.
   // If no custom text is started, keep the default bookmark, close the editor,
   // and replace it with the lightweight "Bookmark added" confirmation.
   if (state.viewMode === 'compact') {
@@ -2994,7 +3094,7 @@ function openRecordingBookmarkTextEditor(marker) {
       const value = String(input.value || '').trim();
       if (value) return; // The user started typing; let them finish and Save/Enter normally.
       closeRecordingBookmarkTextEditor({ showDefaultCompactFeedback: true });
-    }, 1000);
+    }, 3000);
   }
 }
 
@@ -3264,7 +3364,8 @@ async function refreshRecordings() {
     updateBatchDeleteUi();
     if (state.currentWorkspace === 'playback' && state.recordings.length) {
       const selectedStillExists = state.selectedPlaybackPath && state.recordings.some((item) => item.path === state.selectedPlaybackPath);
-      if (!selectedStillExists) await selectPlaybackRecording(state.recordings[0]);
+      const firstVisible = visiblePlaybackRecordings()[0];
+      if (!selectedStillExists && firstVisible) await selectPlaybackRecording(firstVisible);
     }
   } catch (error) {
     $('recordingList').innerHTML = `<div class="empty">Could not load recordings. ${escapeHtml(friendlyErrorText(error))}</div>`;
@@ -3516,6 +3617,21 @@ function recordingItemMarkup(recording) {
     </div>`;
 }
 
+function recordingLibrarySections(recordings) {
+  if (!recordings.length) return [];
+  if (!normalizeLibrarySort(state.librarySort).startsWith('date-')) return [recordings.map(recordingItemMarkup).join('')];
+  const groups = new Map();
+  for (const recording of recordings) {
+    const group = recordingNumericSortValue(recording, 'modifiedMs') == null ? 'Date unavailable' : recordingDateGroup(recording.modifiedMs);
+    if (!groups.has(group)) groups.set(group, []);
+    groups.get(group).push(recording);
+  }
+  return [...groups].map(([group, items]) => `<section class="recording-section recording-date-section" data-date-group="${escapeHtml(group)}">
+    <div class="recording-section-header"><span>${escapeHtml(group)}</span><span class="recording-section-count">${items.length}</span></div>
+    ${items.map(recordingItemMarkup).join('')}
+  </section>`);
+}
+
 function renderRecordings() {
   updateQuickFilterUi();
   if (!state.recordings.length) {
@@ -3524,23 +3640,7 @@ function renderRecordings() {
   }
 
   const recordings = visiblePlaybackRecordings();
-  const groups = new Map();
-  for (const recording of recordings) {
-    const group = recordingDateGroup(recording.modifiedMs);
-    if (!groups.has(group)) groups.set(group, []);
-    groups.get(group).push(recording);
-  }
-
-  const groupOrder = ['Today', 'Yesterday', 'Earlier this week', 'Earlier'];
-  const sections = groupOrder
-    .filter((group) => groups.has(group))
-    .map((group) => {
-      const items = groups.get(group) || [];
-      return `<section class="recording-section recording-date-section" data-date-group="${escapeHtml(group)}">
-        <div class="recording-section-header"><span>${escapeHtml(group)}</span><span class="recording-section-count">${items.length}</span></div>
-        ${items.map(recordingItemMarkup).join('')}
-      </section>`;
-    });
+  const sections = recordingLibrarySections(recordings);
 
   if (!sections.length) {
     const message = state.librarySearch
@@ -3600,6 +3700,7 @@ function renderRecordings() {
     });
   });
   updateBatchDeleteUi();
+  updatePlaybackClipNavigation();
 }
 
 function resetPlaybackSelection() {
@@ -3950,7 +4051,9 @@ async function selectPlaybackRecording(recording) {
   window.recorderAPI.logEvent?.('info', 'playback.recording-selected', { durationSeconds: Number(recording?.durationSeconds || 0), recordingKind: recording?.kind || recording?.recordingKind || '' });
   closeBookmarkInlineEditor({ resume: false });
   const selectionToken = ++state.playbackSelectionToken;
+  const sourceChanged = state.selectedPlaybackPath !== recording.path;
   state.selectedPlaybackPath = recording.path;
+  if (sourceChanged) { state.playbackMarkers = []; renderBookmarkRangeExport(); }
   state.currentWorkspace = 'playback';
   renderPlaybackProcessingStatus();
   if ($('transcriptSearch')) $('transcriptSearch').value = '';
@@ -4121,6 +4224,41 @@ async function selectPlaybackRecording(recording) {
   }
 }
 
+function normalizeLibrarySort(value) {
+  return ['date-newest', 'date-oldest', 'duration-longest', 'duration-shortest', 'name-az', 'name-za', 'size-largest', 'size-smallest'].includes(value) ? value : 'date-newest';
+}
+
+function recordingNumericSortValue(recording, property) {
+  const raw = recording?.[property];
+  if (raw == null || raw === '') return null;
+  const value = Number(raw);
+  return Number.isFinite(value) && value >= 0 ? value : null;
+}
+
+function sortPlaybackRecordings(recordings, requestedSort = state.librarySort) {
+  const sort = normalizeLibrarySort(requestedSort);
+  const textOrder = (a, b, property) => String(a?.[property] || '').localeCompare(String(b?.[property] || ''), 'en', { numeric: true, sensitivity: 'base' });
+  const tieOrder = (a, b) => textOrder(a, b, 'name') || String(a?.path || '').localeCompare(String(b?.path || ''), 'en');
+  const numericProperty = sort.startsWith('duration-') ? 'durationSeconds' : sort.startsWith('size-') ? 'size' : 'modifiedMs';
+  const direction = ['date-newest', 'duration-longest', 'size-largest', 'name-za'].includes(sort) ? -1 : 1;
+  return [...recordings].sort((a, b) => {
+    if (sort.startsWith('name-')) return direction * textOrder(a, b, 'name') || tieOrder(a, b);
+    const first = recordingNumericSortValue(a, numericProperty);
+    const second = recordingNumericSortValue(b, numericProperty);
+    if (first == null && second != null) return 1;
+    if (first != null && second == null) return -1;
+    return (first == null || second == null ? 0 : direction * (first - second)) || tieOrder(a, b);
+  });
+}
+
+function setLibrarySort(value, persist = true) {
+  state.librarySort = normalizeLibrarySort(value);
+  if ($('librarySort')) $('librarySort').value = state.librarySort;
+  if (persist) localStorage.setItem('librarySort', state.librarySort);
+  renderRecordings();
+  updatePlaybackClipNavigation();
+}
+
 function visiblePlaybackRecordings() {
   const filter = state.categoryFilter || '__all__';
   let recordings = filter === '__all__'
@@ -4128,7 +4266,7 @@ function visiblePlaybackRecordings() {
     : state.recordings.filter((item) => (item.category || 'Uncategorized') === filter);
   recordings = recordings.filter(recordingMatchesQuickFilter);
   if (state.librarySearch) recordings = recordings.filter((item) => state.librarySearchMatches.has(item.path));
-  return recordings;
+  return sortPlaybackRecordings(recordings);
 }
 
 function selectedPlaybackIndex() {
@@ -4138,8 +4276,8 @@ function selectedPlaybackIndex() {
 function updatePlaybackClipNavigation() {
   const recordings = visiblePlaybackRecordings();
   const index = recordings.findIndex((item) => item.path === state.selectedPlaybackPath);
-  $('previousClip').disabled = index < 0 || index >= recordings.length - 1;
-  $('nextClip').disabled = index <= 0;
+  $('previousClip').disabled = index <= 0;
+  $('nextClip').disabled = index < 0 || index >= recordings.length - 1;
 }
 
 async function selectPlaybackRelative(direction) {
@@ -4799,20 +4937,20 @@ async function createMicStream(force = false) {
     deviceId: selectedDevice === 'default' ? undefined : { exact: selectedDevice },
     // Enhanced/Strong deliberately capture a source-preserving microphone track.
     // Browser noise suppression/voice isolation can erase speech when a fan masks it,
-    // so those modes now defer denoising until after Stop where the raw sidecar is safe.
+    // so these modes use a separate local RNNoise candidate and retain this source.
     noiseSuppression: sourcePreserving ? false : true,
-    // Use browser acoustic echo cancellation only when computer/application audio is
-    // actually part of the capture. Running WebRTC AEC on a mic-only recording can
-    // soften/pump speech even though there is no playback reference to cancel.
-    // Fan/noise suppression remains entirely in the source-preserving offline path.
-    echoCancellation: computerAudioModeValue() !== 'off',
     autoGainControl: sourcePreserving ? false : true,
     sampleRate: { ideal: 48000 },
     channelCount: { ideal: 1 }
   };
   const supported = navigator.mediaDevices?.getSupportedConstraints?.() || {};
   if (supported.voiceIsolation) audio.voiceIsolation = false;
-  return navigator.mediaDevices.getUserMedia({ audio, video: false });
+  return window.PulseSpeakerAudioPolicy.createMicrophoneStream({
+    mediaDevices: navigator.mediaDevices,
+    audio,
+    role: 'source',
+    onDiagnostics: diagnostics => window.recorderAPI.logEvent?.('info', 'renderer.microphone-audio-policy', diagnostics)
+  });
 }
 
 async function createSpeechOptimizedMicStream(force = false) {
@@ -4828,19 +4966,17 @@ async function createSpeechOptimizedMicStream(force = false) {
     // general-purpose spectral denoiser to solve direct fan/wind turbulence alone.
     noiseSuppression: true,
     autoGainControl: true,
-    echoCancellation: computerAudioModeValue() !== 'off',
     sampleRate: { ideal: 48000 },
     channelCount: { ideal: 1 }
   };
   const supported = navigator.mediaDevices?.getSupportedConstraints?.() || {};
   if (supported.voiceIsolation) audio.voiceIsolation = true;
-  const stream = await navigator.mediaDevices.getUserMedia({ audio, video: false });
-  const track = stream.getAudioTracks()[0];
-  if (!track) {
-    stream.getTracks().forEach((item) => item.stop());
-    throw new Error('Speech-optimized microphone stream did not provide an audio track.');
-  }
-  return stream;
+  return window.PulseSpeakerAudioPolicy.createMicrophoneStream({
+    mediaDevices: navigator.mediaDevices,
+    audio,
+    role: 'speech-fallback',
+    onDiagnostics: diagnostics => window.recorderAPI.logEvent?.('info', 'renderer.microphone-audio-policy', diagnostics)
+  });
 }
 
 function capturePlan() {
@@ -5375,6 +5511,17 @@ async function prepareNoiseSuppressedMicrophoneSidecar(micStream, options = {}) 
   state.processedMicStream = null;
   state.neuralMicMethod = 'none';
   if (!micStream?.getAudioTracks?.().length || !['enhanced', 'strong'].includes(mode)) return null;
+
+  // Some platforms cannot disable their own speech denoiser. Verify the actual
+  // source settings and reuse that processing instead of stacking RNNoise on it.
+  const sourceTrack = micStream.getAudioTracks()[0];
+  if (window.PulseSpeakerAudioPolicy.usesPlatformNoiseSuppression(sourceTrack)) {
+    state.processedMicStream = new MediaStream([sourceTrack.clone()]);
+    const settings = window.PulseSpeakerAudioPolicy.getTrackSettings(sourceTrack);
+    state.neuralMicMethod = settings.voiceIsolation ? 'chromium-voice-isolation' : 'webrtc-noise-suppression';
+    window.recorderAPI.logEvent?.('info', 'renderer.microphone-platform-noise-processing', { method: state.neuralMicMethod });
+    return state.processedMicStream;
+  }
 
   const AudioContextClass = window.AudioContext || window.webkitAudioContext;
   if (!state.audioContext || state.audioContext.state === 'closed') state.audioContext = new AudioContextClass({ sampleRate: 48000 });
@@ -6332,7 +6479,11 @@ async function startRecording() {
       microphoneCaptureProfile: (microphoneNoiseMode === 'enhanced' || microphoneNoiseMode === 'strong' || microphoneNoiseMode === 'off') ? 'source-preserving' : 'browser-standard',
       microphoneInitiallyEnabled,
       microphoneStartOffsetMs: state.recordingMicStartOffsetMs,
-      neuralMicrophoneMethod: state.neuralMicMethod || 'none'
+      neuralMicrophoneMethod: state.neuralMicMethod || 'none',
+      microphoneCapture: window.PulseSpeakerAudioPolicy.describeCapture({
+        sourceStream: state.micStream, speechFallbackStream: state.speechMicStream,
+        processedStream: state.processedMicStream, noiseMethod: state.neuralMicMethod
+      })
     };
     await window.recorderAPI.beginRecordingFile({
       mimeType: mimeType || (audioOnly ? 'audio/webm' : 'video/webm'),
@@ -6843,6 +6994,116 @@ async function saveMultiCutCopy() {
   }
 }
 
+function exportablePlaybackBookmarks() {
+  return (state.playbackMarkers || []).filter(marker => typeof marker.id === 'string' && marker.id.trim() && marker.seconds != null && marker.seconds !== '' && Number.isFinite(Number(marker.seconds)) && Number(marker.seconds) >= 0)
+    .sort((a, b) => Number(a.seconds) - Number(b.seconds) || a.id.localeCompare(b.id));
+}
+
+function bookmarkRangeSelection() {
+  const recordingPath = state.selectedPlaybackPath;
+  if (!recordingPath) return { valid: false, message: 'Select a recording first.' };
+  const markers = exportablePlaybackBookmarks();
+  if (markers.length < 2) return { valid: false, message: 'Add two bookmarks to this recording to export an interval.' };
+  const startMarkerId = $('bookmarkRangeStart')?.value || '';
+  const endMarkerId = $('bookmarkRangeEnd')?.value || '';
+  if (!startMarkerId || !endMarkerId) return { valid: false, message: 'Choose a start bookmark and an end bookmark.' };
+  const start = markers.find(marker => marker.id === startMarkerId);
+  const end = markers.find(marker => marker.id === endMarkerId);
+  if (!start || !end) return { valid: false, message: 'A selected bookmark is no longer available. Choose the interval again.' };
+  if (startMarkerId === endMarkerId) return { valid: false, message: 'Choose two different bookmarks.' };
+  if (Number(end.seconds) <= Number(start.seconds)) return { valid: false, message: 'The end bookmark must be later than the start bookmark.' };
+  const kind = $('bookmarkRangeKind')?.value;
+  if (!['clip', 'audio', 'txt', 'srt'].includes(kind)) return { valid: false, message: 'Choose an export type.' };
+  const recording = state.recordings.find(item => item.path === recordingPath);
+  if (kind === 'clip' && (recording?.mediaType === 'audio' || /\.(?:m4a|mp3)$/i.test(recordingPath))) return { valid: false, message: 'Choose Audio, TXT transcript, or SRT transcript for an audio-only recording.' };
+  return { valid: true, recordingPath, startMarkerId, endMarkerId, kind, startSeconds: Number(start.seconds), endSeconds: Number(end.seconds) };
+}
+
+function renderBookmarkRangeExport() {
+  const startSelect = $('bookmarkRangeStart');
+  const endSelect = $('bookmarkRangeEnd');
+  const kindSelect = $('bookmarkRangeKind');
+  const status = $('bookmarkRangeStatus');
+  if (!startSelect || !endSelect || !kindSelect) return;
+  if (state.bookmarkRangeRecordingPath !== state.selectedPlaybackPath) {
+    state.bookmarkRangeRecordingPath = state.selectedPlaybackPath;
+    startSelect.value = '';
+    endSelect.value = '';
+    if (status) { status.textContent = ''; delete status.dataset.state; }
+  }
+  const markers = exportablePlaybackBookmarks();
+  const selectedStart = startSelect.value;
+  const selectedEnd = endSelect.value;
+  const options = markers.map(marker => `<option value="${escapeHtml(marker.id)}">${escapeHtml(formatPreciseSeconds(Number(marker.seconds)))} · ${escapeHtml(String(marker.label || 'Bookmark'))}</option>`).join('');
+  startSelect.innerHTML = `<option value="">Choose start bookmark…</option>${options}`;
+  endSelect.innerHTML = `<option value="">Choose end bookmark…</option>${options}`;
+  startSelect.value = markers.some(marker => marker.id === selectedStart) ? selectedStart : '';
+  endSelect.value = markers.some(marker => marker.id === selectedEnd) ? selectedEnd : '';
+  const recording = state.recordings.find(item => item.path === state.selectedPlaybackPath);
+  const audioOnly = recording?.mediaType === 'audio' || /\.(?:m4a|mp3)$/i.test(state.selectedPlaybackPath || '');
+  const clipOption = kindSelect.querySelector('option[value="clip"]');
+  if (clipOption) clipOption.disabled = audioOnly;
+  if (audioOnly && kindSelect.value === 'clip') kindSelect.value = 'audio';
+  startSelect.disabled = endSelect.disabled = state.bookmarkRangeExportBusy || !state.selectedPlaybackPath || markers.length < 2;
+  kindSelect.disabled = state.bookmarkRangeExportBusy || !state.selectedPlaybackPath;
+  const selection = bookmarkRangeSelection();
+  if ($('bookmarkRangeSummary')) $('bookmarkRangeSummary').textContent = selection.valid
+    ? `${formatPreciseSeconds(selection.startSeconds)} → ${formatPreciseSeconds(selection.endSeconds)} · ${formatPreciseSeconds(selection.endSeconds - selection.startSeconds)} selected. The original stays unchanged.`
+    : selection.message;
+  if ($('exportBookmarkRange')) {
+    $('exportBookmarkRange').disabled = !selection.valid || state.bookmarkRangeExportBusy || state.editBusy;
+    $('exportBookmarkRange').textContent = state.bookmarkRangeExportBusy ? 'Exporting interval…' : 'Export interval';
+  }
+}
+
+async function exportBookmarkRange() {
+  const status = $('bookmarkRangeStatus');
+  if (!status) return;
+  if (state.bookmarkRangeExportBusy || state.editBusy) { status.textContent = 'Wait for the current export or edit to finish.'; return; }
+  const selection = bookmarkRangeSelection();
+  if (!selection.valid) { status.textContent = selection.message; status.dataset.state = 'error'; return; }
+  if (typeof window.recorderAPI.exportMarkerRange !== 'function') { status.textContent = 'Bookmark interval export is unavailable in this build.'; status.dataset.state = 'error'; return; }
+  const { recordingPath, startMarkerId, endMarkerId, kind } = selection;
+  state.bookmarkRangeExportBusy = true;
+  setEditingBusy(true);
+  status.dataset.state = 'working';
+  status.textContent = ['txt', 'srt'].includes(kind) ? 'Exporting selected interval… Preparing the transcript excerpt may take a little longer.' : 'Exporting selected interval…';
+  renderBookmarkRangeExport();
+  try {
+    const result = await window.recorderAPI.exportMarkerRange({ recordingPath, startMarkerId, endMarkerId, kind });
+    const savedPath = typeof result === 'string' ? result : result?.path;
+    if (state.selectedPlaybackPath === recordingPath) {
+      if (result?.cancelled || !savedPath) { status.textContent = 'Interval export cancelled.'; status.dataset.state = 'cancelled'; }
+      else { status.textContent = `Selected interval saved: ${savedPath}`; status.dataset.state = 'success'; }
+    }
+    if (savedPath && !result?.cancelled) {
+      showToast('Interval export complete');
+      if (kind === 'clip' || kind === 'audio') await refreshRecordings();
+    }
+  } catch (error) {
+    if (state.selectedPlaybackPath === recordingPath) { status.textContent = `Could not export the selected interval. ${friendlyErrorText(error)}`; status.dataset.state = 'error'; }
+  } finally {
+    state.bookmarkRangeExportBusy = false;
+    setEditingBusy(false);
+    renderEditCuts();
+    renderBookmarkRangeExport();
+  }
+}
+
+function initPlaybackLibraryTools() {
+  if ($('librarySort')) {
+    $('librarySort').value = normalizeLibrarySort(state.librarySort);
+    $('librarySort').addEventListener('change', event => setLibrarySort(event.target.value));
+  }
+  for (const id of ['bookmarkRangeStart', 'bookmarkRangeEnd', 'bookmarkRangeKind']) $(id)?.addEventListener('change', () => {
+    const status = $('bookmarkRangeStatus');
+    if (status) { status.textContent = ''; delete status.dataset.state; }
+    renderBookmarkRangeExport();
+  });
+  $('exportBookmarkRange')?.addEventListener('click', exportBookmarkRange);
+  renderBookmarkRangeExport();
+}
+
 async function exportPlaybackAudio() {
   if (!state.selectedPlaybackPath || state.editBusy) return;
   const format = $('exportAudioFormat')?.value === 'mp3' ? 'mp3' : 'm4a';
@@ -7203,7 +7464,7 @@ async function closeAnalyticsReminder() {
 }
 
 const anonymousUsageGroups = Object.freeze({
-  compactMacCloseButton: 'window', compactMacMinimizeButton: 'window', transparencyButton: 'window', themeToggle: 'appearance', alwaysOnTopButton: 'window', compactFullViewButton: 'window', themesButton: 'appearance', helpButton: 'help', aboutButton: 'diagnostics',
+  compactMacCloseButton: 'window', compactMacMinimizeButton: 'window', transparencyButton: 'window', themeToggle: 'appearance', alwaysOnTopButton: 'window', compactFullViewButton: 'window', compactOpenRecordingsFolderButton: 'library', themesButton: 'appearance', helpButton: 'help', aboutButton: 'diagnostics',
   captureWorkspaceTab: 'navigation', playbackWorkspaceTab: 'navigation', fullViewButton: 'window', compactViewButton: 'window', refreshRecordings: 'library', openRecordingsFolder: 'library', refreshSources: 'capture', chooseRegion: 'capture', compactCaptureSettingsToggle: 'capture', compactChooseRegion: 'capture',
   compactRecordingMicToggle: 'recording', compactRecordingKindVideoButton: 'recording', compactRecordingKindAudioButton: 'recording', compactPauseButton: 'recording', compactBookmarkButton: 'bookmarks', compactStartButton: 'recording',
   showInFolder: 'library', copySavedPath: 'library', clearLibrarySearch: 'library', newCategoryButton: 'library', batchSelectButton: 'library', batchDeleteSelected: 'library', batchCancelSelection: 'library', bookmarkInlineSave: 'bookmarks',
@@ -7466,7 +7727,7 @@ async function showFirstRunSetupIfNeeded() {
 
 async function init() {
   const savedTheme = localStorage.getItem('theme');
-  const preferredTheme = savedTheme || (window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark');
+  const preferredTheme = savedTheme || 'light';
   applyTheme(preferredTheme);
   applyUiTheme(localStorage.getItem('uiTheme') || 'classic');
   initFastTooltips();
@@ -7475,12 +7736,13 @@ async function init() {
   // so a restored Mini View starts directly at the user's chosen opacity.
   {
     const savedTransparency = Number(localStorage.getItem('transparencyPercent') || 0);
-    state.transparencyPercent = [0, 10, 20, 30, 50].includes(savedTransparency) ? savedTransparency : 0;
+    state.transparencyPercent = normalizeMiniTransparency(savedTransparency);
   }
   // v0.2.82: restore the last Full/Mini state before the hidden BrowserWindow is
   // revealed. Prefer the main-process state once it exists; fall back to the
   // existing localStorage value to migrate users from v0.2.81 without a flash.
   const nativeViewState = await window.recorderAPI.getWindowViewState?.().catch(() => null);
+  document.documentElement.dataset.nativeMiniControls = nativeViewState?.nativeMiniControls === true ? 'true' : 'false';
   const savedRendererViewMode = localStorage.getItem('viewMode') === 'compact' ? 'compact' : 'full';
   const initialViewMode = nativeViewState?.hasSavedState
     ? (nativeViewState.mode === 'compact' ? 'compact' : 'full')
@@ -7549,7 +7811,7 @@ async function init() {
   state.platformInfo = info;
   applyStartupRecoveryState({ inProgress: Boolean(info.startupRecoveryInProgress) });
   document.documentElement.dataset.platform = info.platform;
-  $('aboutVersion').textContent = info.version || '0.2.129';
+  $('aboutVersion').textContent = info.version || '0.2.140';
   renderWindowCapturePrivacy(await window.recorderAPI.getWindowCapturePrivacy?.().catch(() => ({ enabled: true, supported: info.platform === 'darwin' || info.platform === 'win32' })) || { enabled: true, supported: true });
   const applicationAudioOption = $('computerAudioMode')?.querySelector('option[value="application"]');
   if (applicationAudioOption && !info.applicationAudioSupported) applicationAudioOption.disabled = true;
@@ -7576,6 +7838,8 @@ async function init() {
   await applyTransparency(Number(localStorage.getItem('transparencyPercent') || 0), false);
   await applyAlwaysOnTop(localStorage.getItem('compactAlwaysOnTop') === '1', false);
   initPlaybackSplitter();
+  initPlaybackInspector();
+  initPlaybackLibraryTools();
   initWaveformResizeObserver();
   initStickyPlaybackControls();
   document.querySelector('[data-seek="-1"]')?.setAttribute('title', 'Back 1 second (←)');
@@ -7648,6 +7912,7 @@ async function init() {
   $('refreshSources').addEventListener('click', refreshSources);
   $('refreshRecordings').addEventListener('click', refreshRecordings);
   $('openRecordingsFolder').addEventListener('click', () => window.recorderAPI.openRecordingsFolder());
+  $('compactOpenRecordingsFolderButton')?.addEventListener('click', () => window.recorderAPI.openRecordingsFolder());
   $('librarySearch').addEventListener('input', (event) => scheduleLibrarySearch(event.target.value));
   $('clearLibrarySearch').addEventListener('click', () => { $('librarySearch').value = ''; applyLibrarySearch(''); $('librarySearch').focus(); });
   document.querySelectorAll('[data-library-filter]').forEach((button) => {
@@ -7708,12 +7973,9 @@ async function init() {
   if (MY_VOICE_HIGHLIGHTS_ENABLED) $('voiceEnrollButton')?.addEventListener('click', enrollMyVoice);
   if (MY_VOICE_HIGHLIGHTS_ENABLED) $('voiceClearButton')?.addEventListener('click', clearMyVoiceProfile);
   $('windowCapturePrivacyToggle')?.addEventListener('click', () => setWindowCapturePrivacy(!state.windowCapturePrivacyEnabled));
-  $('transparencyButton').addEventListener('click', async () => {
-    const levels = [0, 10, 20, 30, 50];
-    const currentIndex = Math.max(0, levels.indexOf(state.transparencyPercent));
-    const nextValue = levels[(currentIndex + 1) % levels.length];
-    await applyTransparency(nextValue);
-    showFastTooltipForClick($('transparencyButton'), 1800);
+  $('transparencySlider')?.addEventListener('input', (event) => {
+    hideFastTooltip();
+    applyTransparency(event.target.value);
   });
   $('alwaysOnTopButton').addEventListener('click', () => applyAlwaysOnTop(!state.alwaysOnTop));
   $('compactCaptureSettingsToggle').addEventListener('click', () => applyCompactCaptureCollapsed(!state.compactCaptureCollapsed));
@@ -8053,8 +8315,8 @@ async function init() {
     if (target) window.recorderAPI.showInFolder(target);
     closePlaybackMoreMenu();
   });
-  $('previousClip').addEventListener('click', () => { pulsePlayerControl($('previousClip')); selectPlaybackRelative(1); });
-  $('nextClip').addEventListener('click', () => { pulsePlayerControl($('nextClip')); selectPlaybackRelative(-1); });
+  $('previousClip').addEventListener('click', () => { pulsePlayerControl($('previousClip')); selectPlaybackRelative(-1); });
+  $('nextClip').addEventListener('click', () => { pulsePlayerControl($('nextClip')); selectPlaybackRelative(1); });
   document.querySelectorAll('[data-seek]').forEach((button) => {
     button.addEventListener('click', () => { pulsePlayerControl(button); seekPlayback(Number(button.dataset.seek)); closeSeekOptionsMenu(); });
   });
@@ -8075,15 +8337,11 @@ async function init() {
   });
   $('toggleChapterSidebar')?.addEventListener('click', () => {
     if (!state.selectedPlaybackPath) return;
-    state.chapterSidebarVisible = !state.chapterSidebarVisible;
-    localStorage.setItem('chapterSidebarVisible', state.chapterSidebarVisible ? '1' : '0');
-    renderPlaybackChapterSidebar();
+    setPlaybackInspectorTool(state.chapterSidebarVisible ? 'transcript' : 'timeline');
     window.recorderAPI.logEvent?.('info', 'playback.timeline_toggled', { visible: state.chapterSidebarVisible });
   });
   $('hideChapterSidebar')?.addEventListener('click', () => {
-    state.chapterSidebarVisible = false;
-    localStorage.setItem('chapterSidebarVisible', '0');
-    renderPlaybackChapterSidebar();
+    setPlaybackInspectorTool('transcript');
   });
 
   $('playbackSpeed').addEventListener('change', () => {
@@ -8182,6 +8440,7 @@ async function init() {
   });
   $('openPlaybackTranscript').addEventListener('click', () => {
     if (!state.selectedPlaybackPath) return;
+    setPlaybackInspectorTool('transcript');
     state.transcriptVisible = true;
     loadTranscriptIntoPanel(state.selectedPlaybackPath, state.playbackTranscript, false);
     $('transcriptPanel').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -8412,6 +8671,7 @@ async function init() {
     if (state.currentWorkspace !== 'playback' || !state.selectedPlaybackPath) return;
     if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'f') {
       event.preventDefault();
+      setPlaybackInspectorTool('transcript');
       state.transcriptVisible = true; updateTranscriptActions();
       $('transcriptSearch')?.focus(); $('transcriptSearch')?.select?.();
       return;
