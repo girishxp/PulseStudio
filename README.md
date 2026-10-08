@@ -1,4 +1,66 @@
-# PulseStudio v0.2.144
+# PulseStudio v0.2.148
+
+## v0.2.148 speaker-reference audio and direct Playback controls
+
+- Computer-audio recordings feed an explicit local WebRTC AEC3 reference into
+  microphone cleanup before a single noise-suppression stage. The clean stereo
+  computer audio stays separate and is mixed only once after recording stops.
+- A silent, fixed 48 kHz recording clock supplies both microphone sidecars.
+  Switching between Bluetooth audio and laptop speakers refreshes the selected
+  microphone through stable recorder tracks and resets the acoustic estimator.
+  This fixes the raw microphone timestamp defect observed in the supplied clip.
+- Cancellation and processing failures retain usable microphone audio or dispose
+  unfinished setup. Echo processing is bundled and runs during capture; saving
+  still uses one microphone mixing pass and compensates its measured 19 ms delay.
+- Playback provides direct Open folder and Show in folder actions. Previous,
+  Add, Delete, Next and View/edit bookmark icons are visible below the player,
+  with a direct export-between-bookmarks icon. Narrow-window controls stay usable.
+- Source-replay and simultaneous-speech checks show substantial echo reduction
+  without raising microphone gain. Results vary with the acoustic path and
+  device changes; this is not a claim of zero echo on every microphone or room.
+
+## v0.2.147 Mini transparency tab
+
+The Mini transparency bar now has a small rounded rectangular pale aqua tab,
+with a fine neutral border and colours adapted to Light and Dark appearance.
+The bar keeps its size and position. A taller invisible native grab area makes
+the small tab easier to drag; track clicks, immediate percentage updates and
+keyboard adjustment are retained. Hovering, clicking and dragging show no blue
+halo or highlighted input rectangle. Keyboard focus marks only the tab's edge.
+
+## v0.2.146 automatic transcripts and measured progress
+
+- A saved recording starts its transcript in the background without opening
+  Playback or selecting the file. Unfinished new jobs are retained locally so
+  reopening the app starts them again. Older library files are processed when
+  requested, avoiding an unexpected backlog on upgrade.
+- Audio preparation is visible before decoding begins. During transcription,
+  progress reports completed audio rather than an elapsed-time guess. Optional
+  quality recovery is identified separately.
+- Recording retains priority: background AI waits while capture is active and
+  continues after recording stops. Cancel still cancels the selected job.
+- Long recordings receive a duration-aware processing deadline rather than the
+  same 30-minute limit as a short clip. Extraction failures remain retryable;
+  the app does not label a damaged or unreadable file as having no audio.
+- The existing local multilingual Whisper Small q8 model, timestamp quality,
+  speaker detection, audio cleanup, playback controls and shared Mac/Windows
+  launch folder are retained. Long transcripts still require processing time;
+  no recording is uploaded to a transcription service.
+
+## v0.2.145 reliable Mac startup and readable Mini updates
+
+- Verifies Mac executable architecture directly, so a clean Mac can use its
+  valid bundled components without Xcode or Command Line Tools. Component
+  failures now identify the specific missing, incompatible or invalid item.
+- Restores the matching bundled runtime before downloading when an existing
+  dependency folder belongs to a different platform or architecture.
+- Newly generated Mac update installers reopen the ordinary PulseStudio.app
+  launcher, so manual launch and automatic reopen share the same bounded checks.
+- Mini keeps its 262 × 84 recording controls. A small **Review update** notice
+  opens the complete update details and choices in Full View; recording is
+  preserved and **Back to Mini** returns to the controller.
+- Retains the shared Mac/Windows folder, both publishing scripts, existing
+  recordings/settings, audio cleanup, transcription, exports and analytics.
 
 ## v0.2.144 Playback library action layout
 
@@ -734,10 +796,20 @@ Encoding, microphone cleanup and mixing can still
 take time, particularly for long recordings or a codec that needs conversion.
 Interrupted saves retain their recoverable source and recovery controls.
 
-Automatic transcription runs separately after the media is ready, without
-delaying the saved-media result. One reusable local Whisper Small q8 session
-avoids reloading the model for each recording; initial model loading and long
-transcriptions can still take time. Recording keeps priority over AI work.
+Automatic transcription starts in the main process after the media is ready,
+without delaying the saved-media result. It does not depend on opening Playback
+or selecting a recording. Pending jobs from newly saved recordings are retained
+in the local application profile and restarted when the app reopens. Cancelling
+a job removes its pending entry; failed jobs can be retried through Transcript
+options. Existing library files are not all transcribed again on upgrade.
+
+Audio preparation appears immediately in processing status. Once decoding starts,
+the percentage and processed-audio duration come from completed decoding windows,
+not an elapsed-time estimate. Quality recovery, if needed, is a separate stage.
+One reusable local Whisper Small q8 session avoids reloading the model for each
+recording; initial model loading and long transcriptions can still take time.
+The processing deadline scales with recording length. Recording keeps priority:
+local AI waits during capture and resumes when recording stops.
 
 New recordings, transcripts, snapshots and default exports use
 **Movies/PulseStudio** on Mac or **Videos/PulseStudio** on Windows. Your custom
@@ -752,8 +824,12 @@ turn on the microphone if you also want your own voice. Whenever the microphone
 is enabled, PulseStudio automatically requests whole-system speaker echo
 cancellation only when that capability is advertised, then verifies that it was
 applied. If unavailable, it uses the available browser cancellation path.
-Echo handling is independent of the Computer Audio toggle; no separate echo
-setting is needed.
+Browser echo handling remains active independently of Computer Audio. With
+Computer Audio set to System, the microphone additionally uses the captured
+computer audio as an explicit local AEC3 reference before noise suppression.
+The reference is never played aloud or inserted twice into the recording.
+Both microphone copies share a silent 48 kHz clock, so switching audio routes
+cannot change their recorded packet clock. No separate echo setting is needed.
 
 Choose **Off**, **Standard**, **Enhanced voice**, or **Strong** under
 **Record → Recording setup → Noise removal**. Enhanced voice remains recommended

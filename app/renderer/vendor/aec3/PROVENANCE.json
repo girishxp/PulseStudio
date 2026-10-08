@@ -1,0 +1,16 @@
+{
+  "package": "@ennuicastr/webrtcaec3.js",
+  "version": "0.3.0",
+  "source": "https://github.com/ennuicastr/webrtcaec3.js",
+  "upstreamJavaScriptDownload": "https://cdn.jsdelivr.net/npm/@ennuicastr/webrtcaec3.js@0.3.0/dist/webrtcaec3-0.3.0.js",
+  "upstreamJavaScriptSha256": "2e90b0ab542eaff7f235f148fd5ae5df4608580ccba918dc01afe27d2880c4eb",
+  "binaryDownload": "https://cdn.jsdelivr.net/npm/@ennuicastr/webrtcaec3.js@0.3.0/dist/webrtcaec3-0.3.0.wasm",
+  "binarySha256": "a2f432546daf1b366d04b4921e1a1cdf0d097da7722fb1d5fe553bed3cadb756",
+  "moduleSha256": "fb14da1809f6fd99ff9c1ecdb30307607e8fa19ac4367e1cf77be575f65d1cd4",
+  "adaptation": [
+    "Remove redundant base64 WASM data; explicitly pass identical WASM bytes from the renderer.",
+    "Declare the previous implicit WebRtcAec3Wasm global for strict ES module evaluation.",
+    "Export the upstream factory as ES module default."
+  ],
+  "licenses": "WebRTC BSD-3-Clause and patent grant; Abseil Apache-2.0; glue ISC/0-clause BSD. Full upstream notices retained in the module and LICENSES.txt."
+}

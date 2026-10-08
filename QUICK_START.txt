@@ -1,4 +1,4 @@
-PulseStudio 0.2.144 — one shared folder for Mac and Windows
+PulseStudio 0.2.148 — one shared folder for Mac and Windows
 =========================================================
 
 1. Extract the complete ZIP into a writable location.
@@ -11,9 +11,10 @@ moving it or sharing it. No Terminal commands are needed.
 
 The included application components are ready for Apple silicon Mac and
 64-bit Windows. Apple silicon Mac first launch unpacks its bundled runtime
-locally, without a setup download. Windows launches its included executable
+locally, without a setup download. Mac startup checks do not require Xcode
+or Command Line Tools. Windows launches its included executable
 directly; no Node installation, dependency download, or build is needed.
-Before Mac launch, v0.2.144 prepares the physical host as Pulse Studio.app,
+Before Mac launch, v0.2.145 prepares the physical host as Pulse Studio.app,
 with an Electron.app compatibility link to the same executable and bundle ID.
 Quit an older PulseStudio instance completely before opening the updated app.
 A running host is never moved; the launcher asks you to quit and reopen if needed.
@@ -43,18 +44,37 @@ work as before. Start/Stop stays the same size when hovered. Classic Mini uses
 lighter neutral gray, pastel blue, and mint surfaces.
 Use Full View to return to the complete setup or playback library.
 
+When an update is available, Mini shows a small Review update notice. Select it
+to open the full update sheet with release notes and Update Now, Remind Later
+and Skip This Version. Recording continues when switching views. Back to Mini
+returns to the controller; installation waits until recording/saving is safe.
+
 When adding a bookmark during Mini recording, you have 3 seconds to begin
 typing optional marker text (previously 1 second). Starting to type keeps the
 entry open. Choose Save or press Enter to save; skip the text to keep the
 default bookmark.
 
-Drag Mini View's small transparency bar from 0% to 75%, or focus it and use
-the arrow keys. 0% is opaque; 75% transparency leaves 25% opacity. The saved
+Drag Mini View's small pale aqua rounded transparency tab from 0% to 75%.
+A taller invisible grab area makes it easier to hold without enlarging it.
+Click the track to set its value, or focus the slider and use the arrow keys.
+The percentage updates immediately; pointer interaction shows no blue halo. 0% is opaque; 75% transparency leaves 25% opacity. The saved
 value affects only Mini View. The bar changes transparency without moving
 the window. Full View always stays opaque.
 
 Hover briefly over an icon for a short tooltip. Mini tooltips appear outside
 the controller so they do not cover the recording information or buttons.
+
+Automatic transcription
+-----------------------
+The transcript starts automatically after a new recording is saved, in Full or
+Mini View. You do not need to open Playback or click the recording. Pending new
+jobs are retained locally and started again when PulseStudio reopens.
+Recording has priority: local AI waits during capture and resumes after Stop.
+The status shows audio preparation, then the actual amount of audio transcribed.
+Optional quality checking is shown separately. Long recordings can still take
+several minutes; all transcription stays on this computer.
+Cancel stops the current job. For a failed transcript, choose Transcript options
+(the three dots in the Transcript inspector) > Retry transcription.
 
 Quiet Studio Playback
 --------------------
@@ -93,7 +113,10 @@ if you want to include your own voice. Whenever the microphone is enabled,
 PulseStudio automatically requests whole-system speaker echo cancellation
 only when that capability is advertised, then verifies that it was applied.
 If unavailable, it uses the available browser cancellation path. Echo handling
-works independently of the Computer Audio toggle; no separate setting is needed.
+works independently of the Computer Audio toggle. System audio also supplies
+an explicit local WebRTC AEC3 reference before microphone noise suppression.
+A silent 48 kHz clock keeps both microphone copies stable across audio-device
+changes. No extra echo setting is needed, and no audio is uploaded.
 
 Off, Standard, Enhanced voice, and Strong remain under
 Record > Recording setup > Noise removal. Enhanced voice is recommended for
@@ -114,7 +137,7 @@ The Mac launcher is locally signed, without Apple notarization. If macOS blocks
 its first opening, review it in System Settings > Privacy & Security.
 If macOS asks to access the folder containing PulseStudio, allow that access
 so it can read its shared application files.
-v0.2.144 opens the physical Pulse Studio.app recording host and retains
+v0.2.145 opens the physical Pulse Studio.app recording host and retains
 Electron.app as a compatibility link to the same executable and bundle ID.
 Its executable, signature and established PulseStudio data folder are retained.
 A running host is never moved. Quit PulseStudio completely, then double-click
@@ -175,7 +198,7 @@ Publish PulseStudio - Windows.ps1 beside it in this same folder.
 
 Each selects the newest matching ZIP beside the publisher or in Downloads,
 then asks before commit, push and release creation. For this version, use
-PulseStudio-cross-platform-v0.2.144.zip. One complete upload serves both Mac
+PulseStudio-cross-platform-v0.2.148.zip. One complete upload serves both Mac
 and Windows users. Bundled runtimes are excluded from Git source commits.
 A source push alone does not notify users: the newer semantic version tag and
 matching ZIP must be published as a public Latest release. Nothing is published
@@ -214,7 +237,13 @@ the analytics switch/reminder and makes Pearl Screen recording colour clearer.
 v0.2.143 prepares the physical Pulse Studio.app host on Mac, deepens only the
 recording icon and adds Windows owner publishing next to the Mac publisher.
 The idle icon and common launch folder are retained.
-v0.2.144 fixes the Playback recording-row action layout while retaining the
+v0.2.145 fixes the Playback recording-row action layout while retaining the
 existing controls, icons and all recording and playback options.
 The compact Mini controls, natural tooltips, Mini-only 0–75% transparency,
 native controls, and shared prepared runtimes remain in place.
+
+Playback access in v0.2.148
+--------------------------
+Open folder is directly available in the Playback top toolbar. Show in folder
+is directly below the selected recording. All five bookmark action icons and
+the export-between-bookmarks shortcut are visible without opening a menu.

@@ -45,6 +45,18 @@ if ! command -v node >/dev/null 2>&1 && [ ! -x "$NODE_DIR/bin/node" ]; then need
 for dep in electron electron-builder ffmpeg-static @huggingface/transformers uiohook-napi @sapphi-red/web-noise-suppressor deepfilternet3-noise-filter electron-updater loopback-capture; do
   [ -f "$APP_DIR/node_modules/$dep/package.json" ] || need_bundle=1
 done
+# A complete-looking dependency folder may have come from another computer or
+# architecture. Restore the matching offline payload before attempting npm;
+# npm install can otherwise keep an existing encoder for the wrong Mac.
+VERIFY_NODE=""
+if [ -x "$NODE_DIR/bin/node" ]; then
+  VERIFY_NODE="$NODE_DIR/bin/node"
+elif command -v node >/dev/null 2>&1 && node -e 'process.exit(Number(process.versions.node.split(".")[0]) >= 22 ? 0 : 1)' >/dev/null 2>&1; then
+  VERIFY_NODE="$(command -v node)"
+fi
+if [ "$need_bundle" -eq 0 ] && [ -n "$VERIFY_NODE" ]; then
+  "$VERIFY_NODE" "$APP_DIR/launcher-dependencies.cjs" diagnose >/dev/null 2>&1 || need_bundle=1
+fi
 if [ "$need_bundle" -eq 1 ] && [ -f "$CACHE_MANIFEST" ]; then
   CACHE_ARCH="$(/usr/bin/plutil -extract arch raw -o - "$CACHE_MANIFEST" 2>/dev/null || true)"
   if [ "$CACHE_ARCH" = "$NODE_ARCH" ]; then
@@ -113,7 +125,10 @@ run_setup() {
   shift 2
   node "$APP_DIR/setup-runner.cjs" --timeout-ms "$time_limit" --progress-ms 15000 --status "$setup_label" -- "$@" 2>&1 | tee -a "$LOG_FILE"
 }
-if ! node "$APP_DIR/launcher-dependencies.cjs" check; then
+check_components() {
+  node "$APP_DIR/launcher-dependencies.cjs" check 2>&1 | tee -a "$LOG_FILE"
+}
+if ! check_components; then
   status "Checking cached dependencies before downloading…"
   if run_setup 60000 "Checking cached dependencies" "$NODE_BIN" "$NPM_CLI" install --include=dev --offline --ignore-scripts --no-audit --no-fund; then
     status "Preparing cached desktop components…"
@@ -132,7 +147,7 @@ if [ ! -x "$APP_DIR/node_modules/ffmpeg-static/ffmpeg" ]; then
   status "Preparing the recording encoder…"
   run_setup 180000 "Preparing recording encoder" "$NODE_BIN" "$APP_DIR/node_modules/ffmpeg-static/install.js" || fail "The recording encoder download failed or exceeded its time limit."
 fi
-node "$APP_DIR/launcher-dependencies.cjs" check || fail "The installed components do not match this Mac or the application requirements. Extract the complete ZIP and try again."
+check_components || fail "A required desktop component could not be prepared. The component check above and the launcher log identify the exact problem."
 node "$APP_DIR/launcher-dependencies.cjs" stamp || fail "The prepared runtime could not be saved. Check that this folder is writable."
 ELECTRON_APP="$(node "$APP_DIR/launcher-dependencies.cjs" host-path)" || fail "The Mac app name could not be prepared. Quit PulseStudio completely and open it again."
 ELECTRON_BIN="$ELECTRON_APP/Contents/MacOS/Electron"

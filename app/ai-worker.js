@@ -6,15 +6,16 @@ const cancelledRequests = new Set();
 let activeRequestId = null;
 
 function normalizeProgress(value) {
+  if (value == null) return null;
   const n = Number(value);
   if (!Number.isFinite(n)) return null;
   return Math.max(0, Math.min(1, n > 1 ? n / 100 : n));
 }
 
-function postProgress(payload, label, progress = null, detail = '', phase = 'working') {
+function postProgress(payload, label, progress = null, detail = '', phase = 'working', audioStatus = null) {
   const id = payload?.requestId || activeRequestId;
   if (!id || !process.parentPort) return;
-  process.parentPort.postMessage({ type: 'progress', id, label, progress: normalizeProgress(progress), detail: String(detail || ''), phase });
+  process.parentPort.postMessage({ type: 'progress', id, label, progress: normalizeProgress(progress), detail: String(detail || ''), phase, ...(audioStatus || {}) });
 }
 
 function throwIfCancelled(payload) {
@@ -64,6 +65,66 @@ async function withEstimatedProgress(payload, { label, start, end, detail, phase
     return await work();
   } finally {
     clearInterval(timer);
+  }
+}
+
+function whisperChunkCoverage(durationSeconds, completedChunks, chunkLengthSeconds = 30, strideSeconds = 5) {
+  const totalAudioSeconds = Math.max(0, Number(durationSeconds) || 0);
+  const window = Math.max(1, Number(chunkLengthSeconds) || 30);
+  const overlap = Math.max(0, Math.min(window / 2 - 0.01, Number(strideSeconds) || 0));
+  const step = window - 2 * overlap;
+  const totalChunks = Math.max(1, Math.ceil(Math.max(0, totalAudioSeconds - window) / step) + 1);
+  const complete = Math.max(0, Math.min(totalChunks, Math.floor(Number(completedChunks) || 0)));
+  // Only count coverage retained by Whisper's overlap merger. The first window
+  // retains all but its right overlap; the last retains the complete remainder.
+  const processedSeconds = complete === totalChunks ? totalAudioSeconds
+    : complete ? Math.min(totalAudioSeconds, window - overlap + (complete - 1) * step) : 0;
+  return { processedSeconds, totalAudioSeconds, audioProgress: totalAudioSeconds ? processedSeconds / totalAudioSeconds : 1, completedChunks: complete, totalChunks };
+}
+
+function audioClock(seconds) {
+  const value = Math.max(0, Math.floor(Number(seconds) || 0));
+  return `${Math.floor(value / 60)}:${String(value % 60).padStart(2, '0')}`;
+}
+
+async function withWhisperChunkProgress(payload, { transcriber, durationSeconds }, work) {
+  const model = transcriber?.model;
+  const originalGenerate = model?.generate;
+  const observable = typeof originalGenerate === 'function';
+  const startedAt = Date.now();
+  let completedChunks = 0;
+  const emit = () => {
+    throwIfCancelled(payload);
+    const audioStatus = whisperChunkCoverage(durationSeconds, completedChunks);
+    const detail = observable
+      ? `${audioClock(audioStatus.processedSeconds)} of ${audioClock(audioStatus.totalAudioSeconds)} audio processed · ${audioStatus.completedChunks} of ${audioStatus.totalChunks} sections · ${shortElapsed(Date.now() - startedAt)} elapsed`
+      : `Listening to the recording… · ${shortElapsed(Date.now() - startedAt)} elapsed`;
+    postProgress(payload, 'Transcribing', observable ? 0.18 + 0.76 * audioStatus.audioProgress : null,
+      detail, observable ? 'inference-chunks' : 'inference', observable ? audioStatus : null);
+  };
+  // The installed Whisper model can perform several seek passes inside one
+  // generate call. A token stream's finalize callback counts those passes, not
+  // completed input windows, so observe the outer call instead. Restore the
+  // shared cached model even when inference fails or is cancelled.
+  const trackedGenerate = async function (...args) {
+    throwIfCancelled(payload);
+    const result = await originalGenerate.apply(this, args);
+    throwIfCancelled(payload);
+    completedChunks += 1;
+    emit();
+    return result;
+  };
+  if (observable) model.generate = trackedGenerate;
+  let timer = null;
+  try {
+    emit();
+    timer = setInterval(() => { try { emit(); } catch {} }, 2200);
+    timer.unref?.();
+    return await work();
+  }
+  finally {
+    clearInterval(timer);
+    if (observable && model.generate === trackedGenerate) model.generate = originalGenerate;
   }
 }
 
@@ -212,13 +273,9 @@ async function transcribe(payload) {
     const transcriber = session.pipeline;
     throwIfCancelled(payload);
     const inferenceStartedAt = Date.now();
-    const output = await withEstimatedProgress(payload, {
-      label: 'Transcribing',
-      start: 0.18,
-      end: 0.34,
-      detail: 'Analyzing complete recording…',
-      phase: 'inference',
-      estimatedMs: Math.min(12 * 60 * 1000, Math.max(45000, durationSeconds * 850))
+    const output = await withWhisperChunkProgress(payload, {
+      transcriber,
+      durationSeconds
     }, () => transcriber(inferenceAudio, {
       return_timestamps: true,
       chunk_length_s: 30,
@@ -248,7 +305,7 @@ async function transcribe(payload) {
         const region = regions[index];
         const slice = audio.subarray(region.startSample, region.endSample);
         if (slice.length < Math.round(wav.sampleRate * 0.25)) continue;
-        postProgress(payload, 'Transcribing', 0.36 + 0.56 * (index / Math.max(1, regions.length)), `Recovering phrase ${index + 1} of ${regions.length}…`, 'inference');
+        postProgress(payload, 'Transcribing', 0.94 + 0.03 * (index / Math.max(1, regions.length)), `Checking quiet speech · phrase ${index + 1} of ${regions.length}…`, 'speech-recovery', whisperChunkCoverage(durationSeconds, Infinity));
         const regional = await transcriber(normalizeAsrAudio(slice), { return_timestamps: true, task: 'transcribe' });
         throwIfCancelled(payload);
         const regionalText = String(regional?.text || '').replace(/\s+/g, ' ').trim();
@@ -1030,6 +1087,8 @@ async function handle(payload) {
 module.exports = {
   createAsrPipelineCache,
   asrModelCacheStamp,
+  whisperChunkCoverage,
+  withWhisperChunkProgress,
   transcribe,
   preloadModel,
   parsePcm16MonoWav,

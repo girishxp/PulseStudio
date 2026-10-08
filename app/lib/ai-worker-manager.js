@@ -13,6 +13,7 @@ class AiWorkerManager {
     this.child = null;
     this.spawnPromise = null;
     this.jobs = new Map();
+    this.preparationJobs = new Map();
     this.queue = [];
     this.activeId = null;
     this.crashCount = 0;
@@ -89,6 +90,7 @@ class AiWorkerManager {
       task: job.payload?.task,
       label: String(status.label || job.label || this.labelFor(job.payload?.task)),
       recordingName: String(job.payload?.recordingName || ''),
+      recordingPath: String(job.payload?.recordingPath || ''),
       createdAt: job.createdAt || now,
       startedAt: job.startedAt || null,
       updatedAt: now,
@@ -107,14 +109,19 @@ class AiWorkerManager {
     if (message.type === 'progress') {
       job.lastActivityAt = Date.now();
       this.armStallTimer(job, this.child);
-      const progress = Number.isFinite(Number(message.progress)) ? Math.max(0, Math.min(1, Number(message.progress))) : null;
+      const progress = message.progress != null && Number.isFinite(Number(message.progress)) ? Math.max(0, Math.min(1, Number(message.progress))) : null;
+      const coverage = {};
+      for (const key of ['processedSeconds', 'totalAudioSeconds', 'audioProgress', 'completedChunks', 'totalChunks']) {
+        if (message[key] != null && Number.isFinite(Number(message[key])) && Number(message[key]) >= 0) coverage[key] = key === 'audioProgress' ? Math.min(1, Number(message[key])) : Number(message[key]);
+      }
       this.emitStatus(job, {
         label: String(message.label || job.label || this.labelFor(job.payload.task)),
         detail: String(message.detail || ''),
         progress,
         phase: String(message.phase || 'working'),
         cancellable: true,
-        state: 'running'
+        state: 'running',
+        ...coverage
       });
       return;
     }
@@ -150,8 +157,27 @@ class AiWorkerManager {
     return ({ transcribe: 'Transcribing', diarize: 'Detecting speakers', vad: 'Analyzing speech', 'meeting-insights': 'Generating meeting notes', 'preload-model': 'Downloading AI model' }[task] || 'Processing locally');
   }
 
+  beginPreparation(payload, { onCancel = () => {} } = {}) {
+    const job = { id: randomUUID(), payload: { ...(payload || {}) }, createdAt: Date.now(), startedAt: Date.now(), onCancel };
+    this.preparationJobs.set(job.id, job);
+    this.emitStatus(job, { state: this.paused ? 'queued' : 'running', progress: null,
+      detail: this.paused ? this.pauseReason : 'Preparing audio for transcription…', phase: 'preparing', cancellable: true });
+    return job.id;
+  }
+
+  finishPreparation(id, error = null) {
+    const job = this.preparationJobs.get(id);
+    if (!job) return;
+    this.preparationJobs.delete(id);
+    this.emitStatus(job, { state: error ? (error.code === 'AI_CANCELLED' || error.code === 'RECORDING_PROCESSING_CANCELLED' ? 'cancelled' : 'error') : 'complete',
+      progress: error ? null : 1, detail: error?.message || 'Complete', phase: 'done', cancellable: false });
+  }
+
   request(payload, timeoutMs = 30 * 60 * 1000, options = {}) {
-    const id = randomUUID();
+    if (this.shuttingDown) return Promise.reject(Object.assign(new Error('Application is closing.'), { code: 'AI_SHUTDOWN' }));
+    const preparation = this.preparationJobs.get(options.preparationId);
+    const id = preparation?.id || randomUUID();
+    if (preparation) this.preparationJobs.delete(id);
     const priority = Number(options.priority) || 0;
     const label = options.label || this.labelFor(payload?.task);
     const promise = new Promise((resolve, reject) => {
@@ -174,7 +200,7 @@ class AiWorkerManager {
         lastActivityAt: null,
         cancelled: false,
         deferForHigherPriority: false,
-        createdAt: Date.now(),
+        createdAt: preparation?.createdAt || Date.now(),
         startedAt: null
       };
       this.jobs.set(id, job);
@@ -338,6 +364,10 @@ class AiWorkerManager {
     const next = Boolean(paused);
     this.paused = next;
     this.pauseReason = next ? String(reason || 'Waiting until recording stops') : '';
+    for (const preparation of this.preparationJobs.values()) {
+      this.emitStatus(preparation, { state: next ? 'queued' : 'running', progress: null,
+        detail: next ? this.pauseReason : 'Preparing audio for transcription…', phase: 'preparing', cancellable: true });
+    }
     if (next && this.activeId && this.jobs.has(this.activeId)) {
       const job = this.jobs.get(this.activeId);
       job.deferForRecording = true;
@@ -361,6 +391,12 @@ class AiWorkerManager {
   }
 
   cancel(id) {
+    const preparation = this.preparationJobs.get(String(id || ''));
+    if (preparation) {
+      this.finishPreparation(preparation.id, Object.assign(new Error('AI processing was cancelled.'), { code: 'AI_CANCELLED' }));
+      try { preparation.onCancel(); } catch {}
+      return true;
+    }
     const job = this.jobs.get(String(id || ''));
     if (!job) return false;
     job.cancelled = true;
@@ -389,7 +425,7 @@ class AiWorkerManager {
 
   cancelWhere(predicate) {
     if (typeof predicate !== 'function') return 0;
-    const ids = [...this.jobs.values()].filter((job) => {
+    const ids = [...this.preparationJobs.values(), ...this.jobs.values()].filter((job) => {
       try { return Boolean(predicate(job)); } catch { return false; }
     }).map((job) => job.id);
     let cancelled = 0;
@@ -398,11 +434,12 @@ class AiWorkerManager {
   }
 
   snapshot() {
-    const jobs = [...this.jobs.values()].map((job) => job.lastStatus || {
+    const jobs = [...this.preparationJobs.values(), ...this.jobs.values()].map((job) => job.lastStatus || {
       id: job.id,
       task: job.payload.task,
       label: job.label,
       recordingName: String(job.payload?.recordingName || ''),
+      recordingPath: String(job.payload?.recordingPath || ''),
       createdAt: job.createdAt,
       startedAt: job.startedAt,
       updatedAt: Date.now(),
@@ -424,6 +461,7 @@ class AiWorkerManager {
       job.reject(new Error('Application is closing.'));
     }
     this.jobs.clear();
+    this.preparationJobs.clear();
     this.queue = [];
     try { this.child?.kill(); } catch {}
     this.child = null;

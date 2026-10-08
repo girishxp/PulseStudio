@@ -382,21 +382,29 @@ class RecoveryAwareUpdateManager {
     const helper = path.join(updatesDir, `apply-pulsestudio-v${version}.command`);
     const log = path.join(updatesDir, `update-v${version}.log`);
     const shell = process.platform === 'darwin' ? '/bin/zsh' : '/bin/bash';
+    const isMac = process.platform === 'darwin';
     const launcherPath = process.env.PATH || '/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin';
     const script = `#!${shell}\nset -eu\nexport PATH=${shellQuote(launcherPath)}\nexec >> ${shellQuote(log)} 2>&1\necho "PulseStudio update started: $(date)"\n` +
       `ROOT=${shellQuote(appRoot)}\nZIP=${shellQuote(this.downloadPath)}\nEXPECTED=${shellQuote(version)}\nPID_TO_WAIT=${process.pid}\nAPP_DIR="$ROOT/app"\n` +
-      `OLD_DEP_SIG=""\nif [ -f "$APP_DIR/package.json" ]; then OLD_DEP_SIG="$(/usr/bin/env node -e 'const p=require(process.argv[1]);process.stdout.write(JSON.stringify({dependencies:p.dependencies||{},devDependencies:p.devDependencies||{}}));' "$APP_DIR/package.json" 2>/dev/null || true)"; fi\n` +
+      (isMac ? '' : `OLD_DEP_SIG=""\nif [ -f "$APP_DIR/package.json" ]; then OLD_DEP_SIG="$(/usr/bin/env node -e 'const p=require(process.argv[1]);process.stdout.write(JSON.stringify({dependencies:p.dependencies||{},devDependencies:p.devDependencies||{}}));' "$APP_DIR/package.json" 2>/dev/null || true)"; fi\n`) +
       `while kill -0 "$PID_TO_WAIT" >/dev/null 2>&1; do sleep 0.25; done\nTMP_DIR="$(mktemp -d "\${TMPDIR:-/tmp}/pulsestudio-update.XXXXXX")"\n` +
       `/usr/bin/unzip -q "$ZIP" -d "$TMP_DIR"\nSRC="$TMP_DIR/PulseStudio"\n` +
       `[ -f "$SRC/app/package.json" ] || { echo "Invalid update package"; exit 1; }\n` +
-      `ACTUAL="$(/usr/bin/env node -e 'process.stdout.write(require(process.argv[1]).version)' "$SRC/app/package.json")"\n[ "$ACTUAL" = "$EXPECTED" ] || { echo "Version mismatch: $ACTUAL"; exit 1; }\n` +
+      (isMac
+        ? `ACTUAL="$(/usr/bin/plutil -extract version raw -o - "$SRC/app/package.json")"\n`
+        : `ACTUAL="$(/usr/bin/env node -e 'process.stdout.write(require(process.argv[1]).version)' "$SRC/app/package.json")"\n`) +
+      `[ "$ACTUAL" = "$EXPECTED" ] || { echo "Version mismatch: $ACTUAL"; exit 1; }\n` +
       `/usr/bin/rsync -a --checksum --delete --exclude '.git/' --exclude 'app/node_modules/' --exclude 'app/logs/' --exclude 'app/.pulsestudio-runtime-windows/' --exclude 'app/.pulsestudio-node-runtime/' "$SRC/" "$ROOT/"\n` +
-      `NEW_DEP_SIG="$(/usr/bin/env node -e 'const p=require(process.argv[1]);process.stdout.write(JSON.stringify({dependencies:p.dependencies||{},devDependencies:p.devDependencies||{}}));' "$APP_DIR/package.json" 2>/dev/null || true)"\n` +
-      `if [ "$OLD_DEP_SIG" != "$NEW_DEP_SIG" ]; then echo "Dependency manifest changed; refreshing local dependencies."; (cd "$APP_DIR" && /usr/bin/env npm install --include=dev); fi\n` +
-      `PACKAGE_HASH="$(/usr/bin/env node -e 'const fs=require("fs"),c=require("crypto");process.stdout.write(c.createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex"));' "$APP_DIR/package.json" 2>/dev/null || true)"\nif [ -n "$PACKAGE_HASH" ] && [ -d "$APP_DIR/node_modules" ]; then printf '%s' "$PACKAGE_HASH" > "$APP_DIR/node_modules/.pulsestudio-package-hash"; fi\n` +
+      (isMac ? '' :
+        `NEW_DEP_SIG="$(/usr/bin/env node -e 'const p=require(process.argv[1]);process.stdout.write(JSON.stringify({dependencies:p.dependencies||{},devDependencies:p.devDependencies||{}}));' "$APP_DIR/package.json" 2>/dev/null || true)"\n` +
+        `if [ "$OLD_DEP_SIG" != "$NEW_DEP_SIG" ]; then echo "Dependency manifest changed; refreshing local dependencies."; (cd "$APP_DIR" && /usr/bin/env npm install --include=dev); fi\n` +
+        `PACKAGE_HASH="$(/usr/bin/env node -e 'const fs=require("fs"),c=require("crypto");process.stdout.write(c.createHash("sha256").update(fs.readFileSync(process.argv[1])).digest("hex"));' "$APP_DIR/package.json" 2>/dev/null || true)"\nif [ -n "$PACKAGE_HASH" ] && [ -d "$APP_DIR/node_modules" ]; then printf '%s' "$PACKAGE_HASH" > "$APP_DIR/node_modules/.pulsestudio-package-hash"; fi\n`) +
       `/bin/chmod +x "$ROOT/Start PulseStudio - macOS.command" "$ROOT/Start PulseStudio - Linux.sh" 2>/dev/null || true\n/bin/rm -rf "$TMP_DIR"\necho "PulseStudio v$EXPECTED installed: $(date)"\n` +
-      (process.platform === 'darwin'
-        ? `ELECTRON_APP="$APP_DIR/node_modules/electron/dist/Electron.app"\nif [ -f "$APP_DIR/launcher-dependencies.cjs" ]; then /usr/bin/env node "$APP_DIR/launcher-dependencies.cjs" stamp; ELECTRON_APP="$(/usr/bin/env node "$APP_DIR/launcher-dependencies.cjs" host-path)"; elif [ -x "$APP_DIR/node_modules/electron/dist/Pulse Studio.app/Contents/MacOS/Electron" ]; then ELECTRON_APP="$APP_DIR/node_modules/electron/dist/Pulse Studio.app"; fi\nELECTRON_BIN="$ELECTRON_APP/Contents/MacOS/Electron"\n[ -x "$ELECTRON_BIN" ] || { echo "The desktop runtime is missing; update installed but automatic reopen is unavailable."; exit 1; }\necho "Reopening Pulse Studio: $ELECTRON_APP"\n/usr/bin/open -n "$ELECTRON_APP" --env "PATH=$PATH" --env "PULSESTUDIO_PORTABLE_ROOT=$ROOT" --args "$APP_DIR"\n`
+      (isMac
+        // Run the native bounded launcher without asking Launch Services to
+        // reopen a downloaded unsigned wrapper. It prepares dependencies and
+        // ultimately opens the existing signed Electron host, as before.
+        ? `LAUNCHER="$ROOT/PulseStudio.app"\n[ -x "$LAUNCHER/Contents/MacOS/PulseStudioLauncher" ] || { echo "The Mac launcher is missing; extract the complete update ZIP again."; exit 1; }\necho "Reopening PulseStudio through its launcher: $LAUNCHER"\nexport PULSESTUDIO_PORTABLE_ROOT="$ROOT"\n"$LAUNCHER/Contents/MacOS/PulseStudioLauncher" >/dev/null 2>&1 &\n`
         : `"$ROOT/Start PulseStudio - Linux.sh" >/dev/null 2>&1 &\n`);
     fs.writeFileSync(helper, script, { encoding: 'utf8', mode: 0o755 });
     try { fs.chmodSync(helper, 0o755); } catch {}

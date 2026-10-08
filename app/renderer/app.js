@@ -31,7 +31,7 @@ function fastTooltipDelay(target) {
 
 function naturalTooltipText(target) {
   const common = {
-    compactFullViewButton: 'Open Full View', compactViewButton: 'Open Mini Controller',
+    compactFullViewButton: target?.classList.contains('has-update') ? (target.dataset.updateTooltip || 'Review update in Full View') : 'Open Full View', compactViewButton: 'Open Mini Controller',
     fullViewButton: 'Open Full View', helpButton: 'Help', aboutButton: 'About & Diagnostics',
     themesButton: 'Choose a theme', refreshSources: 'Refresh sources',
     refreshRecordings: 'Refresh recordings', openRecordingsFolder: 'Open recordings folder', compactOpenRecordingsFolderButton: 'Open recordings folder',
@@ -310,6 +310,15 @@ const state = {
   rnnoiseSourceNode: null,
   rnnoiseNode: null,
   rnnoiseDestination: null,
+  microphoneSourceNode: null,
+  speechMicrophoneSourceNode: null,
+  rawMicrophoneDestination: null,
+  rawMicrophoneStream: null,
+  speakerEchoNode: null,
+  speakerEchoLatencyMs: 0,
+  audioRouteGeneration: 0,
+  audioRouteRefreshing: false,
+  audioRouteRefreshTimer: null,
   analyser: null,
   systemAnalyser: null,
   mainAudioDestination: null,
@@ -475,6 +484,8 @@ const state = {
   latestUpdateStatus: null,
   unsubscribeUpdateStatus: null,
   updateDialogRetryTimer: null,
+  updateViewTransitionPending: false,
+  updateDialogOpenedFromMini: false,
   lastDiagnostics: null,
   compactFeedbackTimer: null,
   compactFitFrame: 0,
@@ -802,6 +813,21 @@ function renderCompactAiStatus() {
   scheduleCompactWindowFit();
 }
 
+function visibleAiProgress(job) {
+  if (!job || job.state === 'queued') return null;
+  // A completed decoding window measures audio coverage. Loading and optional
+  // quality recovery are separate stages and must not invent an ASR percentage.
+  if ((job.phase === 'speech-recovery' || String(job.phase || '').includes('fallback'))) return null;
+  const value = job.phase === 'inference-chunks' ? job.audioProgress : job.progress;
+  return value == null || !Number.isFinite(Number(value)) ? null : clamp(Number(value), 0, 1);
+}
+
+function transcriptionCoverageText(job) {
+  if (job?.phase !== 'inference-chunks' || !Number.isFinite(Number(job.totalAudioSeconds)) || Number(job.totalAudioSeconds) <= 0) return '';
+  const completed = Math.min(Number(job.totalAudioSeconds), Math.max(0, Number(job.processedSeconds) || 0));
+  return `${formatDuration(completed)} of ${formatDuration(Number(job.totalAudioSeconds))} transcribed`;
+}
+
 function renderPlaybackProcessingStatus() {
   const badge = $('playbackProcessingBadge');
   if (!badge) return;
@@ -817,8 +843,9 @@ function renderPlaybackProcessingStatus() {
   let text = '';
   let stateName = 'ready';
   if (job) {
-    const pct = Number.isFinite(Number(job.progress)) ? ` ${Math.round(clamp(Number(job.progress), 0, 1) * 100)}%` : '';
-    if (job.task === 'transcribe') text = `Transcribing${pct}`;
+    const measured = visibleAiProgress(job);
+    const pct = measured == null ? '' : ` ${Math.round(measured * 100)}%`;
+    if (job.task === 'transcribe') text = job.phase === 'preparing' ? 'Preparing transcript' : (job.phase === 'speech-recovery' || String(job.phase || '').includes('fallback')) ? 'Checking transcript' : `Transcribing${pct}`;
     else if (job.task === 'diarize') text = `Identifying speakers${pct}`;
     else if (job.task === 'meeting-insights') text = `Building notes${pct}`;
     else text = `${friendlyTechnicalText(job.label || 'Processing')}${pct}`;
@@ -856,8 +883,7 @@ function renderAiStatusCenter() {
     file.classList.toggle('hidden', !recordingName);
     file.title = recordingName;
   }
-  const rawProgress = active.progress == null ? null : Number.isFinite(Number(active.progress)) ? clamp(Number(active.progress), 0, 1) : null;
-  const progress = active.state === 'queued' ? null : rawProgress;
+  const progress = visibleAiProgress(active);
   const approximate = String(active.phase || '').endsWith('-estimate');
   const pct = progress == null ? '' : `${approximate ? '~' : ''}${Math.round(progress * 100)}%`;
   const now = Date.now();
@@ -868,18 +894,21 @@ function renderAiStatusCenter() {
   let detail = friendlyAiDetail(active.detail || '');
   if (active.state === 'queued') {
     const blocker = [...state.aiJobs.values()].find((job) => ['running', 'cancelling'].includes(job.state));
-    detail = blocker
+    detail = detail || (blocker
       ? `Waiting for ${friendlyTechnicalText(blocker.label || 'another local AI task').toLowerCase()} to finish`
-      : (elapsedMs > 10000 ? 'Waiting for the local AI worker to become available' : 'Waiting to start');
+      : (elapsedMs > 10000 ? 'Waiting for the local AI worker to become available' : 'Waiting to start'));
   } else if (active.state === 'running' && quietMs > 45000) detail = 'Still working — no new progress update yet';
+  const coverage = transcriptionCoverageText(active);
+  if (coverage) detail = coverage;
   const elapsed = elapsedMs >= 8000 ? `Elapsed ${formatTime(elapsedMs)}` : '';
   $('aiStatusDetail').textContent = [detail, pct, elapsed].filter(Boolean).join(' · ') || friendlyTechnicalText(active.state);
   $('aiProgressFill').style.width = `${progress == null ? (active.state === 'running' ? 22 : 0) : progress * 100}%`;
   const progressTrack = $('aiProgressTrack');
   if (progressTrack) {
     const numericProgress = progress == null ? 0 : Math.round(progress * 100);
-    progressTrack.setAttribute('aria-valuenow', String(numericProgress));
-    progressTrack.setAttribute('aria-valuetext', active.state === 'queued' ? 'Queued' : progress == null ? 'Working' : `${approximate ? 'About ' : ''}${numericProgress}% complete`);
+    if (progress == null) progressTrack.removeAttribute('aria-valuenow');
+    else progressTrack.setAttribute('aria-valuenow', String(numericProgress));
+    progressTrack.setAttribute('aria-valuetext', active.state === 'queued' ? 'Queued' : coverage || (progress == null ? 'Working' : `${approximate ? 'About ' : ''}${numericProgress}% complete`));
     progressTrack.classList.toggle('activity', active.state === 'running' && (approximate || progress == null || quietMs > 45000));
   }
   const hint = $('aiStatusHint');
@@ -889,7 +918,7 @@ function renderAiStatusCenter() {
     hint.textContent = state.currentWorkspace === 'playback'
       ? 'You can keep reviewing recordings while this continues.'
       : recordingActive
-        ? 'Background processing continues without interrupting this recording.'
+        ? 'Local processing resumes after this recording stops.'
         : 'You can start another recording while this continues.';
     hint.classList.toggle('hidden', !showHint);
   }
@@ -1313,18 +1342,24 @@ async function startRecordingMicrophoneOnDemand(source = 'mini-controller') {
   if (!state.mediaRecorder || state.mediaRecorder.state === 'inactive') return false;
   if (recordingMicrophoneTracks().length > 0) return true;
   if (state.recordingMicStarting) return false;
+  const recording = state.mediaRecorder;
+  const generation = state.audioRouteGeneration;
+  const current = () => generation === state.audioRouteGeneration && state.mediaRecorder === recording && recording.state !== 'inactive' && !state.isStopping;
+  let candidate = null;
   state.recordingMicStarting = true;
   syncRecordingMicrophoneToggles();
   try {
-    state.micStream = await createMicStream(true);
+    candidate = await createMicStream(true);
+    if (!current()) return false;
+    state.micStream = candidate;
+    candidate = null;
     if (!state.micStream?.getAudioTracks?.().length) throw new Error('The microphone did not provide an audio track.');
     attachRecordingMicrophoneLifecycle(state.micStream);
 
     state.speechMicStream = null;
     state.processedMicStream = null;
-    if (['enhanced', 'strong'].includes($('noiseReduction')?.value || '')) {
-      await prepareNoiseSuppressedMicrophoneSidecar(state.micStream, { forceSpeech: true });
-    }
+    await prepareNoiseSuppressedMicrophoneSidecar(state.micStream, { forceSpeech: true });
+    if (!current()) return false;
 
     // The microphone sidecar starts at this point, not at recording time zero. The
     // saved offset is applied as leading silence during final mixing so the mic stays
@@ -1338,7 +1373,7 @@ async function startRecordingMicrophoneOnDemand(source = 'mini-controller') {
         processedStream: state.processedMicStream, noiseMethod: state.neuralMicMethod
       });
     }
-    state.micRecorder = createRawMicrophoneRecorder(state.micStream);
+    state.micRecorder = createRawMicrophoneRecorder(state.rawMicrophoneStream || state.micStream);
     state.neuralMicRecorder = createNeuralMicrophoneRecorder(state.processedMicStream);
     state.micRecorder?.start(2000);
     state.neuralMicRecorder?.start(2000);
@@ -1359,12 +1394,28 @@ async function startRecordingMicrophoneOnDemand(source = 'mini-controller') {
     });
     return true;
   } catch (error) {
+    if (!current()) return false;
     state.micStream?.getTracks?.().forEach((track) => { try { track.stop(); } catch {} });
     state.speechMicStream?.getTracks?.().forEach((track) => { try { track.stop(); } catch {} });
     state.processedMicStream?.getTracks?.().forEach((track) => { try { track.stop(); } catch {} });
     state.micStream = null;
     state.speechMicStream = null;
     state.processedMicStream = null;
+    try { state.rnnoiseSourceNode?.disconnect(); state.rnnoiseNode?.disconnect(); state.rnnoiseNode?.destroy?.(); } catch {}
+    try { state.speechMicrophoneSourceNode?.disconnect(); } catch {}
+    try { if (state.speakerEchoNode) state.systemAudioSourceNode?.disconnect(state.speakerEchoNode); } catch {}
+    try { state.speakerEchoNode?.port.postMessage({ type: 'dispose' }); state.speakerEchoNode?.disconnect(); } catch {}
+    try { state.microphoneSourceNode?.disconnect(); } catch {}
+    state.rawMicrophoneStream?.getTracks?.().forEach(track => { try { track.stop(); } catch {} });
+    state.rnnoiseSourceNode = null;
+    state.speechMicrophoneSourceNode = null;
+    state.rnnoiseNode = null;
+    state.rnnoiseDestination = null;
+    state.speakerEchoNode = null;
+    state.speakerEchoLatencyMs = 0;
+    state.microphoneSourceNode = null;
+    state.rawMicrophoneDestination = null;
+    state.rawMicrophoneStream = null;
     state.micRecorder = null;
     state.neuralMicRecorder = null;
     const detail = friendlyErrorText(error);
@@ -1373,8 +1424,11 @@ async function startRecordingMicrophoneOnDemand(source = 'mini-controller') {
     window.recorderAPI.logEvent?.('error', 'renderer.recording-microphone-late-start-failed', { source, error: detail, elapsedMs: elapsedMs() });
     return false;
   } finally {
-    state.recordingMicStarting = false;
-    syncRecordingMicrophoneToggles();
+    candidate?.getTracks?.().forEach(track => { try { track.stop(); } catch {} });
+    if (generation === state.audioRouteGeneration && state.mediaRecorder === recording) {
+      state.recordingMicStarting = false;
+      syncRecordingMicrophoneToggles();
+    }
   }
 }
 
@@ -1547,8 +1601,15 @@ function updatePauseButtons(paused) {
 async function applyViewMode(mode, resizeWindow = true) {
   hideFastTooltip();
   const compact = mode === 'compact';
+  const wasCompact = state.viewMode === 'compact';
+  state.updateViewTransitionPending = Boolean(resizeWindow);
+  if (compact) state.updateDialogOpenedFromMini = false;
+  else if (wasCompact && updateNeedsReview(state.latestUpdateStatus)) state.updateDialogOpenedFromMini = true;
   state.viewMode = compact ? 'compact' : 'full';
   document.body.classList.toggle('compact-mode', compact);
+  // Close any large update sheet before shrinking, and wait for the native
+  // Full window to finish restoring before showing its details and choices.
+  renderUpdateDialog(state.latestUpdateStatus || {});
   placeAiStatusForView();
   if (compact) $('stickyPlaybackControls')?.classList.remove('is-visible');
   $('fullViewButton').classList.toggle('active', !compact);
@@ -1571,7 +1632,16 @@ async function applyViewMode(mode, resizeWindow = true) {
       if (result && typeof result === 'object' && 'nativeMiniControls' in result) {
         document.documentElement.dataset.nativeMiniControls = result.nativeMiniControls === true ? 'true' : 'false';
       }
-    } catch {}
+    } catch {
+      if (!compact && wasCompact) {
+        // A failed native expansion must not put a Full-size sheet back into
+        // the small controller. Restore its controls and leave the cue ready.
+        state.updateViewTransitionPending = false;
+        await applyViewMode('compact', false);
+        showToast('Could not open Full View. Try the expand button again.', 'warning', 3500);
+        return;
+      }
+    }
     if (compact) {
       const active = Boolean(state.mediaRecorder && state.mediaRecorder.state !== 'inactive');
       try { await window.recorderAPI.setCompactRecordingState?.(active); } catch {}
@@ -1590,6 +1660,8 @@ async function applyViewMode(mode, resizeWindow = true) {
   renderCompactAiStatus();
   renderSavedRecordingResult();
   if (compact) { installCompactFitObserver(); scheduleCompactWindowFit(); }
+  state.updateViewTransitionPending = false;
+  renderUpdateDialog(state.latestUpdateStatus || {});
 }
 
 function applySettingsCollapsed(collapsed) {
@@ -5451,6 +5523,185 @@ async function buildCompositeStream(plan, captures) {
 let deepFilterLibraryPromise = null;
 let rnnoiseLibraryPromise = null;
 let rnnoiseBinaryPromise = null;
+let speakerEchoBinaryPromise = null;
+
+async function createRecordingAudioContext() {
+  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
+  let context;
+  try {
+    // Recording does not play this graph. A silent sink keeps its clock away
+    // from Bluetooth/speaker output reconfiguration and avoids feedback.
+    context = new AudioContextClass({ sampleRate: 48000, sinkId: { type: 'none' } });
+  } catch {
+    context = new AudioContextClass({ sampleRate: 48000 });
+    if (typeof context.setSinkId === 'function') {
+      try { await context.setSinkId({ type: 'none' }); } catch {}
+    }
+  }
+  return context;
+}
+
+function prepareStableMicrophoneRelay(audioContext, micStream) {
+  if (!audioContext || !micStream?.getAudioTracks?.().length) return null;
+  if (state.microphoneSourceNode && state.rawMicrophoneStream) return state.microphoneSourceNode;
+  const source = audioContext.createMediaStreamSource(micStream);
+  const destination = audioContext.createMediaStreamDestination();
+  destination.channelCount = 1;
+  destination.channelCountMode = 'explicit';
+  source.connect(destination);
+  // Both sidecars now share the 48 kHz recording clock. This copy applies no
+  // filter, gate or gain; retain it for recovery when an output device changes.
+  state.microphoneSourceNode = source;
+  state.rawMicrophoneDestination = destination;
+  state.rawMicrophoneStream = new MediaStream(destination.stream.getAudioTracks());
+  return source;
+}
+
+async function refreshRecordingAudioRoute() {
+  if (!state.mediaRecorder || state.mediaRecorder.state === 'inactive' || state.isStopping || state.audioRouteRefreshing || !state.rawMicrophoneDestination) return;
+  state.audioRouteRefreshing = true;
+  const generation = state.audioRouteGeneration;
+  const context = state.audioContext;
+  const recording = state.mediaRecorder;
+  const current = () => generation === state.audioRouteGeneration && context === state.audioContext && recording === state.mediaRecorder && !state.isStopping && recording.state !== 'inactive';
+  const speechFallback = Boolean(state.speechMicrophoneSourceNode && state.speechMicStream);
+  let replacement = null;
+  let speechReplacement = null;
+  let replacementSource = null;
+  let replacementSpeechSource = null;
+  try {
+    // Follow only the user's selected input. The existing source stays attached
+    // until the replacement is ready; both recorder output tracks stay stable.
+    replacement = await createMicStream(true);
+    if (!current()) return;
+    if (speechFallback) {
+      speechReplacement = await createSpeechOptimizedMicStream(true);
+      if (!current()) return;
+      if (!speechReplacement?.getAudioTracks?.().length) throw new Error('The replacement speech microphone did not provide an audio track.');
+      replacementSpeechSource = context.createMediaStreamSource(speechReplacement);
+      for (const track of speechReplacement.getAudioTracks()) track.enabled = !state.recordingMicMuted;
+    }
+    replacementSource = context.createMediaStreamSource(replacement);
+    for (const track of replacement.getAudioTracks()) track.enabled = !state.recordingMicMuted;
+    replacementSource.connect(state.rawMicrophoneDestination);
+    if (speechFallback) replacementSpeechSource.connect(state.rnnoiseDestination);
+    else if (state.speakerEchoNode) replacementSource.connect(state.speakerEchoNode, 0, 0);
+    else if (state.rnnoiseNode) replacementSource.connect(state.rnnoiseNode);
+    else if (state.rnnoiseDestination) replacementSource.connect(state.rnnoiseDestination);
+    const previous = state.micStream;
+    const previousSource = state.microphoneSourceNode;
+    const previousSpeech = speechFallback ? state.speechMicStream : null;
+    const previousSpeechSource = speechFallback ? state.speechMicrophoneSourceNode : null;
+    state.micStream = replacement;
+    state.microphoneSourceNode = replacementSource;
+    if (speechFallback) {
+      state.speechMicStream = speechReplacement;
+      state.speechMicrophoneSourceNode = replacementSpeechSource;
+    }
+    replacement = null;
+    replacementSource = null;
+    speechReplacement = null;
+    replacementSpeechSource = null;
+    try { previousSource?.disconnect(); } catch {}
+    previous?.getTracks?.().forEach(track => { try { track.stop(); } catch {} });
+    try { previousSpeechSource?.disconnect(); } catch {}
+    previousSpeech?.getTracks?.().forEach(track => { try { track.stop(); } catch {} });
+    attachRecordingMicrophoneLifecycle(state.micStream);
+    state.speakerEchoNode?.port.postMessage({ type: 'reset' });
+    if (state.activeRecordingMeta) state.activeRecordingMeta.microphoneCapture = window.PulseSpeakerAudioPolicy.describeCapture({
+      sourceStream: state.micStream, speechFallbackStream: state.speechMicStream,
+      processedStream: state.processedMicStream, noiseMethod: state.neuralMicMethod
+    });
+    window.recorderAPI.logEvent?.('info', 'renderer.recording-audio-route-refreshed', { clock: 'stable-48000', echoReference: Boolean(state.speakerEchoNode), muted: Boolean(state.recordingMicMuted) });
+  } catch (error) {
+    window.recorderAPI.logEvent?.('warn', 'renderer.recording-audio-route-refresh-failed', { error: String(error?.message || error) });
+  } finally {
+    try { replacementSource?.disconnect(); } catch {}
+    try { replacementSpeechSource?.disconnect(); } catch {}
+    replacement?.getTracks?.().forEach(track => { try { track.stop(); } catch {} });
+    speechReplacement?.getTracks?.().forEach(track => { try { track.stop(); } catch {} });
+    if (generation === state.audioRouteGeneration) state.audioRouteRefreshing = false;
+  }
+}
+
+function scheduleRecordingAudioRouteRefresh() {
+  if (state.audioRouteRefreshing) return;
+  clearTimeout(state.audioRouteRefreshTimer);
+  state.audioRouteRefreshTimer = setTimeout(() => { state.audioRouteRefreshTimer = null; void refreshRecordingAudioRoute(); }, 400);
+}
+
+async function createSpeakerEchoNode(audioContext, microphoneSource) {
+  if (!state.systemAudioSourceNode || !microphoneSource) return null;
+  const generation = state.audioRouteGeneration;
+  const referenceSource = state.systemAudioSourceNode;
+  const current = () => generation === state.audioRouteGeneration && audioContext === state.audioContext;
+  let node = null;
+  try {
+    if (!speakerEchoBinaryPromise) speakerEchoBinaryPromise = fetch('appasset://aec3/webrtcaec3-0.3.0.wasm').then(async response => {
+      if (!response.ok) throw new Error('The bundled echo cancellation binary could not be loaded.');
+      return new Uint8Array(await response.arrayBuffer());
+    });
+    const wasmBinary = await speakerEchoBinaryPromise;
+    if (!current()) return null;
+    await audioContext.audioWorklet.addModule(new URL('./speaker-echo-worklet.js', location.href));
+    if (!current()) return null;
+    node = new AudioWorkletNode(audioContext, 'pulse-speaker-echo', {
+      numberOfInputs: 2, numberOfOutputs: 1, outputChannelCount: [1],
+      channelCount: 1, channelCountMode: 'explicit', processorOptions: { wasmBinary }
+    });
+    node.pulseSpeakerEcho = true;
+    await new Promise((resolve, reject) => {
+      const timeout = setTimeout(() => reject(new Error('Local echo cancellation initialization timed out.')), 5000);
+      node.port.onmessage = ({ data }) => {
+        if (data?.type === 'ready') {
+          clearTimeout(timeout);
+          if (current()) state.speakerEchoLatencyMs = Number(data.latencySamples || 0) / 48;
+          resolve();
+        } else if (data?.type === 'error') {
+          clearTimeout(timeout);
+          reject(new Error(data.message || 'Local echo cancellation is unavailable.'));
+        }
+      };
+      node.onprocessorerror = () => { clearTimeout(timeout); reject(new Error('Local echo cancellation could not start.')); };
+    });
+    if (!current()) { node.port.postMessage({ type: 'dispose' }); node.disconnect(); return null; }
+    microphoneSource.connect(node, 0, 0);
+    referenceSource.connect(node, 0, 1);
+    state.speakerEchoNode = node;
+    node.onprocessorerror = () => {
+      if (state.speakerEchoNode !== node || state.audioContext !== audioContext) return;
+      const currentSource = state.microphoneSourceNode;
+      const target = state.rnnoiseNode || state.rnnoiseDestination;
+      try { currentSource?.disconnect(node); } catch {}
+      try { state.systemAudioSourceNode?.disconnect(node); } catch {}
+      try { node.disconnect(); node.port.postMessage({ type: 'dispose' }); } catch {}
+      if (currentSource && target) {
+        currentSource.connect(target);
+        if (state.rnnoiseNode) state.rnnoiseSourceNode = currentSource;
+      }
+      state.speakerEchoNode = null;
+      state.speakerEchoLatencyMs = 0;
+      state.neuralMicMethod = state.neuralMicMethod.replace(/^webrtc-aec3\+/, '').replace(/^webrtc-aec3-system-reference$/, 'none');
+      if (state.activeRecordingMeta) state.activeRecordingMeta.neuralMicrophoneMethod = state.neuralMicMethod;
+      window.recorderAPI.logEvent?.('warn', 'renderer.speaker-reference-bypassed', { method: state.neuralMicMethod, microphonePreserved: Boolean(currentSource && target) });
+    };
+    node.port.onmessage = ({ data }) => {
+      if (data?.type === 'error') window.recorderAPI.logEvent?.('warn', 'renderer.speaker-echo-failopen', { message: String(data.message || ''), latencyMs: state.speakerEchoLatencyMs });
+    };
+    // The reference is analyzed only. It is never sent to an output device or
+    // mixed into this microphone candidate a second time.
+    window.recorderAPI.logEvent?.('info', 'renderer.speaker-reference-ready', { method: 'webrtc-aec3-system-reference', sampleRate: audioContext.sampleRate, latencyMs: state.speakerEchoLatencyMs });
+    return node;
+  } catch (error) {
+    try { node?.port.postMessage({ type: 'dispose' }); node?.disconnect(); } catch {}
+    if (!current()) return null;
+    speakerEchoBinaryPromise = null;
+    state.speakerEchoNode = null;
+    state.speakerEchoLatencyMs = 0;
+    window.recorderAPI.logEvent?.('warn', 'renderer.speaker-reference-unavailable', { error: String(error?.message || error) });
+    return null;
+  }
+}
 
 async function createDeepFilterSuppressorNode(audioContext, mode) {
   if (!deepFilterLibraryPromise) deepFilterLibraryPromise = import('appasset://deepfilter/index.esm.js');
@@ -5515,10 +5766,17 @@ async function createRnnoiseSuppressorNode(audioContext) {
 }
 
 
-async function createLocalNeuralNoiseSuppressedMicStream(audioContext, micStream) {
+async function createLocalNeuralNoiseSuppressedMicStream(audioContext, micStream, upstreamNode = null) {
   if (!audioContext || !micStream?.getAudioTracks?.().length) throw new Error('A live microphone and AudioContext are required for RNNoise.');
-  const source = audioContext.createMediaStreamSource(micStream);
+  const generation = state.audioRouteGeneration;
   const suppressor = await createRnnoiseSuppressorNode(audioContext);
+  if (generation !== state.audioRouteGeneration || (state.audioContext && audioContext !== state.audioContext)) {
+    try { suppressor.disconnect(); suppressor.destroy?.(); } catch {}
+    throw new Error('Microphone setup cancelled.');
+  }
+  const source = upstreamNode?.pulseSpeakerEcho && state.speakerEchoNode !== upstreamNode
+    ? state.microphoneSourceNode
+    : upstreamNode || audioContext.createMediaStreamSource(micStream);
   const destination = audioContext.createMediaStreamDestination();
   try {
     source.connect(suppressor);
@@ -5530,7 +5788,7 @@ async function createLocalNeuralNoiseSuppressedMicStream(audioContext, micStream
     state.rnnoiseDestination = destination;
     return new MediaStream([track]);
   } catch (error) {
-    try { source.disconnect(); } catch {}
+    try { source.disconnect(suppressor); } catch {}
     try { suppressor.disconnect?.(); } catch {}
     try { suppressor.destroy?.(); } catch {}
     destination.stream?.getTracks?.().forEach((track) => { try { track.stop(); } catch {} });
@@ -5539,25 +5797,59 @@ async function createLocalNeuralNoiseSuppressedMicStream(audioContext, micStream
 }
 
 async function prepareNoiseSuppressedMicrophoneSidecar(micStream, options = {}) {
+  const generation = state.audioRouteGeneration;
   const mode = $('noiseReduction')?.value || 'off';
   state.processedMicStream = null;
   state.neuralMicMethod = 'none';
-  if (!micStream?.getAudioTracks?.().length || !['enhanced', 'strong'].includes(mode)) return null;
+  if (!micStream?.getAudioTracks?.().length) return null;
+  let context = state.audioContext;
+  if (!context || context.state === 'closed') {
+    context = await createRecordingAudioContext();
+    if (generation !== state.audioRouteGeneration) { await context.close(); return null; }
+    state.audioContext = context;
+  }
+  const current = () => generation === state.audioRouteGeneration && state.audioContext === context;
+  await context.resume();
+  if (!current()) return null;
+  const microphoneSource = prepareStableMicrophoneRelay(context, micStream);
+  const echoNode = await createSpeakerEchoNode(context, microphoneSource);
+  if (!current()) return null;
+  const enhanced = ['enhanced', 'strong'].includes(mode);
+  const destinationFor = source => {
+    if (source?.pulseSpeakerEcho && state.speakerEchoNode !== source) source = state.microphoneSourceNode;
+    const destination = state.audioContext.createMediaStreamDestination();
+    destination.channelCount = 1;
+    destination.channelCountMode = 'explicit';
+    try { source.connect(destination); }
+    catch (error) {
+      try { destination.disconnect(); } catch {}
+      destination.stream.getTracks().forEach(track => { try { track.stop(); } catch {} });
+      throw error;
+    }
+    state.rnnoiseDestination = destination;
+    return new MediaStream(destination.stream.getAudioTracks());
+  };
+
+  // Echo removal remains active when noise reduction is Off or Standard. It
+  // removes the speaker copy, not independent local speech or computer audio.
+  if (!enhanced) {
+    if (!echoNode) return null;
+    state.processedMicStream = destinationFor(echoNode);
+    state.neuralMicMethod = 'webrtc-aec3-system-reference';
+    return state.processedMicStream;
+  }
 
   // Some platforms cannot disable their own speech denoiser. Verify the actual
   // source settings and reuse that processing instead of stacking RNNoise on it.
   const sourceTrack = micStream.getAudioTracks()[0];
   if (window.PulseSpeakerAudioPolicy.usesPlatformNoiseSuppression(sourceTrack)) {
-    state.processedMicStream = new MediaStream([sourceTrack.clone()]);
+    state.processedMicStream = destinationFor(echoNode || microphoneSource);
     const settings = window.PulseSpeakerAudioPolicy.getTrackSettings(sourceTrack);
     state.neuralMicMethod = settings.voiceIsolation ? 'chromium-voice-isolation' : 'webrtc-noise-suppression';
+    if (echoNode) state.neuralMicMethod = `webrtc-aec3+${state.neuralMicMethod}`;
     window.recorderAPI.logEvent?.('info', 'renderer.microphone-platform-noise-processing', { method: state.neuralMicMethod });
     return state.processedMicStream;
   }
-
-  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-  if (!state.audioContext || state.audioContext.state === 'closed') state.audioContext = new AudioContextClass({ sampleRate: 48000 });
-  await state.audioContext.resume();
 
   // v0.2.104: Enhanced/Strong use the bundled local RNNoise AudioWorklet as the
   // primary noise-suppression candidate. This is a sidecar only: the source-preserving
@@ -5565,30 +5857,51 @@ async function prepareNoiseSuppressedMicrophoneSidecar(micStream, options = {}) 
   // can never erase the only copy of the user's voice.
   try {
     setStatus('Preparing local neural fan/noise suppression…');
-    const stream = await createLocalNeuralNoiseSuppressedMicStream(state.audioContext, micStream);
+    const stream = await createLocalNeuralNoiseSuppressedMicStream(context, micStream, echoNode || microphoneSource);
+    if (!current()) { stream?.getTracks?.().forEach(track => track.stop()); return null; }
     state.processedMicStream = stream;
-    state.neuralMicMethod = 'rnnoise-local-neural';
+    state.neuralMicMethod = echoNode && state.speakerEchoNode === echoNode ? 'webrtc-aec3+rnnoise-local-neural' : 'rnnoise-local-neural';
     return stream;
   } catch (error) {
+    if (!current()) return null;
     console.warn('Local RNNoise microphone suppression unavailable; using Chromium speech processing fallback.', error);
     window.recorderAPI.logEvent?.('warn', 'renderer.rnnoise-unavailable', { error: String(error?.message || error || '') });
   }
 
+  if (echoNode) {
+    // Keep the reference cancellation if the optional denoiser fails. Opening
+    // another input here would give it a different clock and acoustic path.
+    state.processedMicStream = destinationFor(echoNode);
+    state.neuralMicMethod = 'webrtc-aec3-system-reference';
+    return state.processedMicStream;
+  }
+
   // Keep the existing conferencing-style Chromium path as a fallback on machines
-  // where AudioWorklet/WASM cannot initialize. It remains a second stream and never
-  // changes the recoverable source microphone.
+  // where AudioWorklet/WASM cannot initialize. Relay its separate input onto the
+  // same clock so both microphone recorder tracks survive a device switch.
+  let speechStream = null;
+  let speechSource = null;
   try {
-    state.speechMicStream = await createSpeechOptimizedMicStream(Boolean(options.forceSpeech));
-    if (!state.speechMicStream?.getAudioTracks?.().length) throw new Error('Speech-optimized microphone did not provide an audio track.');
-    state.processedMicStream = new MediaStream(state.speechMicStream.getAudioTracks());
+    speechStream = await createSpeechOptimizedMicStream(Boolean(options.forceSpeech));
+    if (!current()) { speechStream?.getTracks?.().forEach(track => track.stop()); return null; }
+    if (!speechStream?.getAudioTracks?.().length) throw new Error('Speech-optimized microphone did not provide an audio track.');
+    speechSource = context.createMediaStreamSource(speechStream);
+    const processed = destinationFor(speechSource);
+    state.speechMicStream = speechStream;
+    state.speechMicrophoneSourceNode = speechSource;
+    state.processedMicStream = processed;
     const settings = state.speechMicStream.getAudioTracks()[0]?.getSettings?.() || {};
     if (settings.voiceIsolation) state.neuralMicMethod = 'chromium-voice-isolation';
     else if (settings.noiseSuppression) state.neuralMicMethod = 'webrtc-noise-suppression';
     else state.neuralMicMethod = 'webrtc-speech-processing';
     return state.processedMicStream;
   } catch (error) {
+    try { speechSource?.disconnect(); } catch {}
+    speechStream?.getTracks?.().forEach(track => { try { track.stop(); } catch {} });
+    if (!current()) return null;
     console.warn('Speech-optimized microphone fallback unavailable; source-preserving offline cleanup will be used.', error);
     state.speechMicStream = null;
+    state.speechMicrophoneSourceNode = null;
     state.processedMicStream = null;
     state.neuralMicMethod = 'none';
     return null;
@@ -5604,8 +5917,7 @@ async function buildMixedStream(videoStream, sourceStreams, micStream) {
   state.neuralMicMethod = 'none';
   if (!systemTrack && !hasMic && !needsSilentTrack) return new MediaStream(videoTracks);
 
-  const AudioContextClass = window.AudioContext || window.webkitAudioContext;
-  state.audioContext = new AudioContextClass({ sampleRate: 48000 });
+  state.audioContext = await createRecordingAudioContext();
   await state.audioContext.resume();
   const mainDestination = state.audioContext.createMediaStreamDestination();
 
@@ -5622,7 +5934,7 @@ async function buildMixedStream(videoStream, sourceStreams, micStream) {
     systemSource.connect(state.systemAnalyser);
   }
 
-  if (hasMic && ['enhanced', 'strong'].includes($('noiseReduction')?.value || '')) {
+  if (hasMic) {
     await prepareNoiseSuppressedMicrophoneSidecar(micStream);
   }
 
@@ -6152,7 +6464,7 @@ function cleanupStreams() {
   }
   state.micRecorder = null;
   state.neuralMicRecorder = null;
-  for (const stream of [...state.captureStreams, state.compositeStream, state.micStream, state.speechMicStream, state.processedMicStream, state.webcamStream, state.mixedStream]) {
+  for (const stream of [...state.captureStreams, state.compositeStream, state.micStream, state.rawMicrophoneStream, state.speechMicStream, state.processedMicStream, state.webcamStream, state.mixedStream]) {
     stream?.getTracks().forEach((track) => track.stop());
   }
   state.captureStreams = [];
@@ -6211,11 +6523,24 @@ function cleanupStreams() {
     state.deepFilterProcessor = null;
   }
   try { state.rnnoiseSourceNode?.disconnect?.(); } catch {}
+  try { state.speechMicrophoneSourceNode?.disconnect?.(); } catch {}
   try { state.rnnoiseNode?.disconnect?.(); } catch {}
   try { state.rnnoiseNode?.destroy?.(); } catch {}
   state.rnnoiseSourceNode = null;
+  state.speechMicrophoneSourceNode = null;
   state.rnnoiseNode = null;
   state.rnnoiseDestination = null;
+  clearTimeout(state.audioRouteRefreshTimer);
+  state.audioRouteRefreshTimer = null;
+  state.audioRouteGeneration += 1;
+  state.audioRouteRefreshing = false;
+  try { state.speakerEchoNode?.port.postMessage({ type: 'dispose' }); state.speakerEchoNode?.disconnect(); } catch {}
+  try { state.microphoneSourceNode?.disconnect(); } catch {}
+  state.speakerEchoNode = null;
+  state.speakerEchoLatencyMs = 0;
+  state.microphoneSourceNode = null;
+  state.rawMicrophoneDestination = null;
+  state.rawMicrophoneStream = null;
   if (state.audioContext) state.audioContext.close().catch(() => {});
   try { state.systemAudioSourceNode?.disconnect?.(); } catch {}
   state.audioContext = null;
@@ -6336,6 +6661,10 @@ async function reconnectEntireScreenCapture(source, captureIndex = 0) {
           const replacementAudioSource = state.audioContext.createMediaStreamSource(new MediaStream([replacementAudioTrack]));
           replacementAudioSource.connect(state.mainAudioDestination);
           if (state.systemAnalyser) replacementAudioSource.connect(state.systemAnalyser);
+          if (state.speakerEchoNode) {
+            replacementAudioSource.connect(state.speakerEchoNode, 0, 1);
+            state.speakerEchoNode.port.postMessage({ type: 'reset' });
+          }
           state.systemAudioSourceNode = replacementAudioSource;
         }
 
@@ -6525,7 +6854,7 @@ async function startRecording() {
       filenameTemplate: state.activeRecordingMeta.filenameTemplate,
       hasMicrophone: true,
       microphoneMimeType: microphoneMimeType || 'audio/webm',
-      hasNeuralMicrophone: ['enhanced', 'strong'].includes(microphoneNoiseMode),
+      hasNeuralMicrophone: ['enhanced', 'strong'].includes(microphoneNoiseMode) || audioMode === 'system',
       neuralMicrophoneMimeType: neuralMicrophoneMimeType || 'audio/webm',
       neuralMicrophoneMethod: state.neuralMicMethod || 'none',
       microphoneNoiseMode,
@@ -6581,7 +6910,7 @@ async function startRecording() {
       setTimeout(() => { if (state.mediaRecorder && !state.isStopping) stopRecording({ automaticReason: reason, forceFinalize: true }); }, 0);
     });
 
-    state.micRecorder = createRawMicrophoneRecorder(state.micStream);
+    state.micRecorder = createRawMicrophoneRecorder(state.rawMicrophoneStream || state.micStream);
     state.neuralMicRecorder = createNeuralMicrophoneRecorder(state.processedMicStream);
 
     captures.forEach((capture, captureIndex) => attachCaptureSourceLifecycle(capture, captureIndex));
@@ -7367,7 +7696,7 @@ async function runAutomaticTranscription(recordingPath, focusPanel = true, force
     setTranscriptTarget(recordingPath);
   }
   const showTranscriptProgress = focusPanel || state.selectedPlaybackPath === recordingPath || state.transcriptTargetPath === recordingPath;
-  if (showTranscriptProgress) $('transcriptStatus').textContent = 'Generating transcript…';
+  if (showTranscriptProgress) $('transcriptStatus').textContent = 'Transcribing in the background. You can keep reviewing recordings.';
   renderRecordings();
   try {
     const result = await window.recorderAPI.transcribeAutomatic(recordingPath, { force });
@@ -7535,16 +7864,43 @@ async function refreshModelManager() {
   } catch (error) { list.innerHTML = `<div class="empty">Could not load local AI models. ${escapeHtml(friendlyErrorText(error))}</div>`; }
 }
 
+function updateNeedsReview(value = {}) {
+  return value?.state === 'available' || value?.state === 'downloading' || value?.state === 'ready' || value?.state === 'installing' || (value?.state === 'error' && Boolean(value.availableVersion));
+}
+
+function renderMiniUpdateNotice(value = {}) {
+  const active = updateNeedsReview(value);
+  const label = ({ available: 'Update available', downloading: `Downloading ${Math.round(Number(value.progress || 0) * 100)}%`, ready: 'Update ready', installing: 'Installing update', error: 'Update issue' })[value.state] || 'Update available';
+  const version = value.availableVersion ? ` · v${value.availableVersion}` : '';
+  const hint = `${label}${version} — review in Full View`;
+  document.body.classList.toggle('compact-update-notice', active);
+  const review = $('compactUpdateReview');
+  if (review) {
+    review.classList.toggle('hidden', !active);
+    review.textContent = `${label} · Review`;
+    review.title = hint;
+    review.setAttribute('aria-label', hint);
+  }
+  const fullView = $('compactFullViewButton');
+  if (fullView) {
+    fullView.classList.toggle('has-update', active);
+    fullView.dataset.updateTooltip = active ? hint : '';
+    fullView.title = active ? hint : 'Open Full View';
+    fullView.setAttribute('aria-label', fullView.title);
+  }
+}
+
 function scheduleUpdateDialogOpen() {
   if (state.updateDialogRetryTimer) clearTimeout(state.updateDialogRetryTimer);
   state.updateDialogRetryTimer = null;
   const dialog = $('updateAvailableDialog');
-  if (!dialog || dialog.open) return;
+  if (!dialog || dialog.open || state.viewMode === 'compact' || state.updateViewTransitionPending) return;
   const tryOpen = () => {
     state.updateDialogRetryTimer = null;
     const value = state.latestUpdateStatus || {};
-    const shouldOpen = value.state === 'available' || value.state === 'downloading' || value.state === 'ready' || value.state === 'installing' || (value.state === 'error' && Boolean(value.availableVersion));
-    if (!shouldOpen || dialog.open) return;
+    // Mini only presents a review cue. Details, release notes, download and
+    // restart choices always live in the restored Full View, never at 262×84.
+    if (!updateNeedsReview(value) || dialog.open || state.viewMode === 'compact' || state.updateViewTransitionPending) return;
     const anotherDialogOpen = Array.from(document.querySelectorAll('dialog[open]')).some((node) => node !== dialog);
     if (anotherDialogOpen) {
       state.updateDialogRetryTimer = setTimeout(tryOpen, 250);
@@ -7558,7 +7914,11 @@ function scheduleUpdateDialogOpen() {
 function renderUpdateDialog(value = {}) {
   const dialog = $('updateAvailableDialog');
   if (!dialog) return;
-  const active = value.state === 'available' || value.state === 'downloading' || value.state === 'ready' || value.state === 'installing' || (value.state === 'error' && Boolean(value.availableVersion));
+  const active = updateNeedsReview(value);
+  renderMiniUpdateNotice(value);
+  if (state.viewMode === 'compact' || state.updateViewTransitionPending) {
+    if (dialog.open) dialog.close();
+  }
   if (!active) {
     if (state.updateDialogRetryTimer) clearTimeout(state.updateDialogRetryTimer);
     state.updateDialogRetryTimer = null;
@@ -7567,6 +7927,8 @@ function renderUpdateDialog(value = {}) {
   }
 
   const version = value.availableVersion ? `v${value.availableVersion}` : 'New version';
+  if ($('updateAvailableDialogTitle')) $('updateAvailableDialogTitle').textContent = ({ downloading: 'Downloading your update', ready: 'Your update is ready', installing: 'Installing your update', error: 'The update needs attention' })[value.state] || 'A new version is available';
+  $('updateReturnToMini')?.classList.toggle('hidden', !state.updateDialogOpenedFromMini || value.state === 'installing');
   if ($('updateAvailableVersion')) $('updateAvailableVersion').textContent = version;
   if ($('updateReleaseNotes')) $('updateReleaseNotes').textContent = value.releaseNotes || 'No release notes were provided for this build.';
   if ($('updateAvailableStatus')) $('updateAvailableStatus').textContent = value.message || `PulseStudio ${version} is available.`;
@@ -7636,7 +7998,7 @@ function updateAnalyticsUi(status) {
 }
 
 const anonymousUsageGroups = Object.freeze({
-  compactMacCloseButton: 'window', compactMacMinimizeButton: 'window', transparencyButton: 'window', themeToggle: 'appearance', alwaysOnTopButton: 'window', compactFullViewButton: 'window', compactOpenRecordingsFolderButton: 'library', themesButton: 'appearance', helpButton: 'help', aboutButton: 'diagnostics',
+  compactMacCloseButton: 'window', compactMacMinimizeButton: 'window', transparencyButton: 'window', themeToggle: 'appearance', alwaysOnTopButton: 'window', compactFullViewButton: 'window', compactUpdateReview: 'updates', updateReturnToMini: 'window', compactOpenRecordingsFolderButton: 'library', themesButton: 'appearance', helpButton: 'help', aboutButton: 'diagnostics',
   captureWorkspaceTab: 'navigation', playbackWorkspaceTab: 'navigation', fullViewButton: 'window', compactViewButton: 'window', refreshRecordings: 'library', openRecordingsFolder: 'library', refreshSources: 'capture', chooseRegion: 'capture', compactCaptureSettingsToggle: 'capture', compactChooseRegion: 'capture',
   compactRecordingMicToggle: 'recording', compactRecordingKindVideoButton: 'recording', compactRecordingKindAudioButton: 'recording', compactPauseButton: 'recording', compactBookmarkButton: 'bookmarks', compactStartButton: 'recording',
   showInFolder: 'library', copySavedPath: 'library', clearLibrarySearch: 'library', newCategoryButton: 'library', batchSelectButton: 'library', batchDeleteSelected: 'library', batchCancelSelection: 'library', bookmarkInlineSave: 'bookmarks',
@@ -7898,6 +8260,7 @@ async function showFirstRunSetupIfNeeded() {
 
 
 async function init() {
+  navigator.mediaDevices?.addEventListener?.('devicechange', scheduleRecordingAudioRouteRefresh);
   const savedTheme = localStorage.getItem('theme');
   const preferredTheme = savedTheme || 'light';
   applyTheme(preferredTheme);
@@ -7983,7 +8346,7 @@ async function init() {
   state.platformInfo = info;
   applyStartupRecoveryState({ inProgress: Boolean(info.startupRecoveryInProgress) });
   document.documentElement.dataset.platform = info.platform;
-  $('aboutVersion').textContent = info.version || '0.2.144';
+  $('aboutVersion').textContent = info.version || '0.2.148';
   renderWindowCapturePrivacy(await window.recorderAPI.getWindowCapturePrivacy?.().catch(() => ({ enabled: true, supported: info.platform === 'darwin' || info.platform === 'win32' })) || { enabled: true, supported: true });
   const applicationAudioOption = $('computerAudioMode')?.querySelector('option[value="application"]');
   if (applicationAudioOption && !info.applicationAudioSupported) applicationAudioOption.disabled = true;
@@ -8138,6 +8501,8 @@ async function init() {
   $('fullViewButton').addEventListener('click', () => applyViewMode('full'));
   $('compactViewButton').addEventListener('click', () => applyViewMode('compact'));
   $('compactFullViewButton')?.addEventListener('click', () => applyViewMode('full'));
+  $('compactUpdateReview')?.addEventListener('click', () => applyViewMode('full'));
+  $('updateReturnToMini')?.addEventListener('click', () => applyViewMode('compact'));
   $('compactMacMinimizeButton')?.addEventListener('click', () => window.recorderAPI.minimizeWindow?.());
   $('compactMacCloseButton')?.addEventListener('click', () => window.recorderAPI.closeWindow?.());
   $('settingsCollapseButton').addEventListener('click', () => applySettingsCollapsed(!state.settingsCollapsed));

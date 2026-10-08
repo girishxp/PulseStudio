@@ -2701,6 +2701,7 @@ function registerRecordingProcessingChild(recordingPath, child) {
 
 async function cancelBackgroundProcessingForRecording(recordingPath) {
   const safe = safeRecordingPath(recordingPath);
+  removePendingAutomaticTranscription(safe);
   cancelledRecordingProcessing.add(safe);
   const cancelledAiJobs = aiWorkerManager.cancelWhere((job) => {
     const candidate = String(job?.payload?.recordingPath || '');
@@ -3167,11 +3168,7 @@ async function finalizeSealedRecordingInternal(sessionId) {
   // worker is automatically paused whenever another recording is active, so this
   // runs only while the recorder is otherwise free and resumes without requiring the
   // user to switch from Mini to Full View or click the clip.
-  setTimeout(() => {
-    ensureAutomaticTranscriptionJob(outputPath, false).catch((error) => {
-      appendAiWorkerLog(`Automatic background transcription failed for ${path.basename(outputPath)}: ${error?.message || error}`);
-    });
-  }, 0);
+  queueSavedRecordingTranscription(outputPath);
 
   lastRecordingDiagnosticMeta = {
     ...lastRecordingDiagnosticMeta,
@@ -3210,6 +3207,7 @@ async function finalizeSealedRecording(sessionId) {
     } finally {
       cancelledFinalizationSessions.delete(key);
       activeFinalizationChildren.delete(key);
+      if (!activeTempPath && !activeWriteStream && sealedRecordingSessions.size === 0) setRecordingResourcePriority(false, 'recording-save-finished');
       setTimeout(() => { void updateManager?.resumeDeferred?.(); }, 0);
     }
   });
@@ -3904,8 +3902,9 @@ async function mixMicrophoneIntoRecording(basePath, micPath, recordingKind = 'vi
   const requestedMicFilter = String(options.micFilter || 'highpass=f=65:p=2').trim() || 'highpass=f=65:p=2';
   const delayMs = Math.max(0, Math.round(Number(options.delayMs) || 0));
   const delayFilter = delayMs > 0 ? `adelay=${delayMs}:all=1,` : '';
-  // v0.2.122: capture-time WebRTC AEC/RNNoise is authoritative. Finalization must
-  // never run a second adaptive echo canceller or auto-raise microphone loudness.
+  // Capture-time AEC/RNNoise is authoritative, including the explicit system
+  // reference in v0.2.148. Finalization never adds another adaptive canceller
+  // or raises microphone loudness.
   // The final limiter only attenuates peaks (level=disabled); it cannot normalize upward.
   const micFilter = `${delayFilter}${requestedMicFilter}`;
   const standaloneMicFilter = `${micFilter},alimiter=limit=0.97:level=disabled`;
@@ -3936,8 +3935,8 @@ async function mixMicrophoneIntoRecording(basePath, micPath, recordingKind = 'vi
     fs.renameSync(merged, basePath);
     activityLog('info', 'audio.microphone-mixed', {
       outputFile: path.basename(basePath),
-      echoGuard: false,
-      echoGuardProfile: hasBaseAudio ? 'capture-time-webrtc-only+stereo-direct-mix' : 'capture-time-webrtc-only',
+      echoGuard: Boolean(options.referenceEcho),
+      echoGuardProfile: options.referenceEcho ? 'capture-time-aec3-system-reference+stereo-direct-mix' : hasBaseAudio ? 'capture-time-webrtc-only+stereo-direct-mix' : 'capture-time-webrtc-only',
       recordingKind,
       outputChannels: hasBaseAudio ? 2 : 1
     });
@@ -3949,26 +3948,31 @@ async function mixMicrophoneIntoRecording(basePath, micPath, recordingKind = 'vi
 
 function fastMicrophoneFilter(noiseMode, neuralMethod = 'none') {
   const mode = normalizeMicNoiseMode(noiseMode);
+  // Match the new live AEC3 sidecar to the unchanged computer-audio timeline.
+  // Its measured additional delay is 914 samples at 48 kHz (~19 ms). Padding
+  // keeps the duration unchanged, including late microphone enable and pause.
+  const align = /^webrtc-aec3/.test(String(neuralMethod || ''))
+    ? 'atrim=start=0.019,asetpts=PTS-STARTPTS,apad=pad_dur=0.019,' : '';
   const localNeural = /rnnoise/i.test(String(neuralMethod || ''));
-  const browserSuppressed = /^(chromium-voice-isolation|webrtc-noise-suppression)$/.test(String(neuralMethod || ''));
+  const browserSuppressed = /(?:^|\+)(chromium-voice-isolation|webrtc-noise-suppression)$/.test(String(neuralMethod || ''));
   // v0.2.122: Enhanced/Strong already have capture-time RNNoise. Do not denoise,
   // gate, dynamically normalize, or add the previous 1.58-1.68x gain after Stop.
   // Retain only light rumble removal; the final mix owns the attenuation-only limiter.
   if ((mode === 'enhanced' || mode === 'strong') && (localNeural || browserSuppressed)) {
     const cutoff = mode === 'strong' ? 80 : 65;
-    return `highpass=f=${cutoff}:p=2`;
+    return `${align}highpass=f=${cutoff}:p=2`;
   }
   // If the neural sidecar is unavailable, retain a conservative non-neural cleanup
   // path so Enhanced/Strong still provide useful noise reduction without auto-boost.
   if (mode === 'strong') {
-    return 'highpass=f=115:p=2,equalizer=f=210:t=q:w=0.90:g=-3.5,equalizer=f=480:t=q:w=1.0:g=-2.0,afftdn=nr=12:nf=-49:tn=1:tr=1:ad=0.96:gs=4,agate=threshold=0.0062:ratio=2.2:attack=12:release=320:range=0.09,equalizer=f=2800:t=q:w=0.95:g=0.8';
+    return align + 'highpass=f=115:p=2,equalizer=f=210:t=q:w=0.90:g=-3.5,equalizer=f=480:t=q:w=1.0:g=-2.0,afftdn=nr=12:nf=-49:tn=1:tr=1:ad=0.96:gs=4,agate=threshold=0.0062:ratio=2.2:attack=12:release=320:range=0.09,equalizer=f=2800:t=q:w=0.95:g=0.8';
   }
   if (mode === 'enhanced') {
-    return 'highpass=f=95:p=2,equalizer=f=185:t=q:w=0.90:g=-2.5,equalizer=f=430:t=q:w=1.0:g=-1.4,afftdn=nr=9:nf=-51:tn=1:tr=1:ad=0.97:gs=3,agate=threshold=0.0052:ratio=1.9:attack=14:release=320:range=0.13,equalizer=f=2800:t=q:w=0.95:g=0.8';
+    return align + 'highpass=f=95:p=2,equalizer=f=185:t=q:w=0.90:g=-2.5,equalizer=f=430:t=q:w=1.0:g=-1.4,afftdn=nr=9:nf=-51:tn=1:tr=1:ad=0.97:gs=3,agate=threshold=0.0052:ratio=1.9:attack=14:release=320:range=0.13,equalizer=f=2800:t=q:w=0.95:g=0.8';
   }
-  return mode === 'standard'
+  return align + (mode === 'standard'
     ? 'highpass=f=75:p=2,equalizer=f=2700:t=q:w=0.95:g=0.5'
-    : 'highpass=f=65:p=2';
+    : 'highpass=f=65:p=2');
 }
 
 async function renderFastMicrophoneMaster(rawMicPath, neuralMicPath, noiseMode, neuralMethod = 'none') {
@@ -3978,7 +3982,7 @@ async function renderFastMicrophoneMaster(rawMicPath, neuralMicPath, noiseMode, 
   if (!raw) throw new Error('Temporary microphone track was not found.');
   const neural = validMicrophoneRecoveryPath(neuralMicPath);
   const mode = normalizeMicNoiseMode(noiseMode);
-  const source = (mode === 'enhanced' || mode === 'strong') && neural ? neural : raw;
+  const source = neural && (mode === 'enhanced' || mode === 'strong' || /^webrtc-aec3/.test(String(neuralMethod || ''))) ? neural : raw;
   const output = path.join(recoveryDirectory(), `microphone-fast-${Date.now()}-${process.pid}.m4a`);
   const filters = fastMicrophoneFilter(mode, source === neural ? neuralMethod : 'none');
   await runProcess(executable, ['-y', '-i', source, '-vn', '-af', filters, '-ac', '1', '-ar', '48000', '-c:a', 'aac', '-b:a', '192k', output]);
@@ -3991,12 +3995,12 @@ async function postProcessAndMixMicrophone(basePath, micPath, recordingKind, noi
   if (!safeMic) return { applied: false, method: 'none' };
   const mode = normalizeMicNoiseMode(noiseMode);
   const safeNeuralMic = validMicrophoneRecoveryPath(neuralMicPath);
-  const source = (mode === 'enhanced' || mode === 'strong') && safeNeuralMic ? safeNeuralMic : safeMic;
+  const source = safeNeuralMic && (mode === 'enhanced' || mode === 'strong' || /^webrtc-aec3/.test(String(neuralMethod || ''))) ? safeNeuralMic : safeMic;
   const sourceLabel = source === safeNeuralMic ? 'speech-processed-sidecar' : 'microphone-sidecar';
   try {
-    // Normal Stop stays one microphone FFmpeg pass. The capture-preserving filter
-    // is applied inline and mixed directly; there is no second offline AEC or gain pass.
-    await mixMicrophoneIntoRecording(basePath, source, recordingKind, { micFilter: fastMicrophoneFilter(mode, source === safeNeuralMic ? neuralMethod : 'none'), delayMs: microphoneStartOffsetMs });
+    // Stop still uses one microphone FFmpeg pass. Reference cancellation runs
+    // live before noise suppression; no long echo-analysis job is added here.
+    await mixMicrophoneIntoRecording(basePath, source, recordingKind, { micFilter: fastMicrophoneFilter(mode, source === safeNeuralMic ? neuralMethod : 'none'), delayMs: microphoneStartOffsetMs, referenceEcho: source === safeNeuralMic && /^webrtc-aec3/.test(String(neuralMethod || '')) });
     if (deleteSourceOnSuccess) { try { fs.unlinkSync(safeMic); } catch {} }
     activityLog('info', 'audio.microphone-finalized', {
       recording: String(recordingName || path.basename(basePath)),
@@ -4476,6 +4480,7 @@ function copyRecordingTranscriptMetadata(sourcePath, targetPath) {
 
 const AUTO_TRANSCRIPTION_MODEL = 'onnx-community/whisper-small';
 const automaticTranscriptionJobs = new Map();
+let automaticTranscriptionJournal = null;
 const AUTO_DIARIZATION_MODEL = 'onnx-community/pyannote-segmentation-3.0';
 const AUTO_SPEAKER_EMBEDDING_MODEL = 'Xenova/wavlm-base-plus-sv';
 const AUTO_INSIGHTS_MODEL = 'onnx-community/Qwen2.5-1.5B-Instruct';
@@ -4514,6 +4519,107 @@ function chunksToSrt(chunks, fallbackText = '') {
   }).join('\n');
 }
 
+function automaticTranscriptionJournalPath() {
+  return path.join(app.getPath('userData'), 'pending-transcriptions.json');
+}
+
+function loadAutomaticTranscriptionJournal() {
+  if (automaticTranscriptionJournal) return automaticTranscriptionJournal;
+  automaticTranscriptionJournal = new Map();
+  try {
+    const saved = JSON.parse(fs.readFileSync(automaticTranscriptionJournalPath(), 'utf8'));
+    if (saved.version === 1 && Array.isArray(saved.entries)) {
+      for (const entry of saved.entries) {
+        if (!entry || !['pending', 'failed'].includes(entry.state) || typeof entry.fingerprint !== 'string' || typeof entry.path !== 'string' || !entry.path) continue;
+        try {
+          const safe = safeRecordingPath(entry.path);
+          automaticTranscriptionJournal.set(safe, { path: safe, fingerprint: entry.fingerprint,
+            createdAt: Number(entry.createdAt) || Date.now(), state: entry.state });
+        } catch {}
+      }
+    }
+  } catch {}
+  return automaticTranscriptionJournal;
+}
+
+function persistAutomaticTranscriptionJournal() {
+  try { atomicWriteJson(automaticTranscriptionJournalPath(), { version: 1, entries: [...loadAutomaticTranscriptionJournal().values()] }); }
+  catch (error) { appendAiWorkerLog(`Could not save the pending transcription queue: ${error?.message || error}`); }
+}
+
+function removePendingAutomaticTranscription(recordingPath) {
+  if (loadAutomaticTranscriptionJournal().delete(recordingPath)) persistAutomaticTranscriptionJournal();
+}
+
+function removeAllPendingAutomaticTranscriptions() {
+  const journal = loadAutomaticTranscriptionJournal();
+  let removed = 0;
+  for (const [recordingPath, entry] of journal) {
+    if (entry.state === 'pending') { journal.delete(recordingPath); removed += 1; }
+  }
+  if (removed) persistAutomaticTranscriptionJournal();
+  return removed;
+}
+
+function queueSavedRecordingTranscription(recordingPath) {
+  const safe = safeRecordingPath(recordingPath);
+  // Persist before yielding to the renderer, so closing immediately after Save
+  // cannot turn a fresh recording into a clip that needs a Playback click.
+  const entry = { path: safe, fingerprint: recordingAudioFingerprint(safe), createdAt: Date.now(), state: 'pending' };
+  loadAutomaticTranscriptionJournal().set(safe, entry);
+  persistAutomaticTranscriptionJournal();
+  setTimeout(() => {
+    if (appIsQuitting || loadAutomaticTranscriptionJournal().get(safe) !== entry || entry.state !== 'pending') return;
+    try {
+      if (!fs.existsSync(safe) || recordingAudioFingerprint(safe) !== entry.fingerprint) {
+        removePendingAutomaticTranscription(safe);
+        return;
+      }
+    } catch { removePendingAutomaticTranscription(safe); return; }
+    ensureAutomaticTranscriptionJob(safe, false).catch((error) => {
+      if (!appIsQuitting) appendAiWorkerLog(`Automatic background transcription failed for ${path.basename(safe)}: ${error?.message || error}`);
+    });
+  }, 0);
+}
+
+async function resumePendingAutomaticTranscriptions() {
+  // Resume only this app's unfinished saved-recording jobs. Do not scan or
+  // retranscribe the user's historical media library during startup.
+  const pending = [...loadAutomaticTranscriptionJournal().values()].filter((entry) => entry.state === 'pending');
+  for (const entry of pending) {
+    if (appIsQuitting) return;
+    if (loadAutomaticTranscriptionJournal().get(entry.path) !== entry || entry.state !== 'pending') continue;
+    try {
+      if (!fs.existsSync(entry.path) || recordingAudioFingerprint(entry.path) !== entry.fingerprint) {
+        removePendingAutomaticTranscription(entry.path);
+        continue;
+      }
+      await ensureAutomaticTranscriptionJob(entry.path, false);
+    } catch (error) {
+      if (!appIsQuitting) appendAiWorkerLog(`Pending background transcription could not resume: ${error?.message || error}`);
+    }
+  }
+}
+
+async function waitForAutomaticTranscriptionIdle(recordingPath) {
+  while (recordingCaptureActive) {
+    throwIfRecordingProcessingCancelled(recordingPath);
+    if (appIsQuitting) throw Object.assign(new Error('Application is closing.'), { code: 'AI_SHUTDOWN' });
+    await new Promise((resolve) => setTimeout(resolve, 300));
+  }
+  throwIfRecordingProcessingCancelled(recordingPath);
+  if (appIsQuitting) throw Object.assign(new Error('Application is closing.'), { code: 'AI_SHUTDOWN' });
+}
+
+function automaticTranscriptionTimeoutMs(wavBytes) {
+  // Extraction produces 16 kHz mono PCM16. Keep the existing short-clip budget,
+  // but allow long meetings to finish on slower CPUs instead of discarding good
+  // progress at the same fixed 30-minute deadline. The separate heartbeat stall
+  // watchdog still catches an unresponsive worker quickly.
+  const audioSeconds = Math.max(0, (Number(wavBytes) - 44) / 32000) || 0;
+  return Math.min(4 * 60 * 60 * 1000, Math.max(30 * 60 * 1000, Math.ceil((audioSeconds * 1.5 + 600) * 1000)));
+}
+
 
 async function transcribeRecordingAutomatically(recordingPath, force = false) {
   const transcriptionStartedAt = Date.now();
@@ -4540,20 +4646,31 @@ async function transcribeRecordingAutomatically(recordingPath, force = false) {
     }
   }
 
-  const wavPath = path.join(app.getPath('temp'), `auto-transcribe-${Date.now()}.wav`);
+  const preparationId = aiWorkerManager.beginPreparation({ task: 'transcribe', recordingName: path.basename(safe), recordingPath: safe }, {
+    onCancel: () => {
+      cancelledRecordingProcessing.add(safe);
+      void cancelBackgroundProcessingForRecording(safe).catch((error) => appendAiWorkerLog(`Could not stop transcription preparation: ${error?.message || error}`));
+    }
+  });
+  const wavPath = path.join(app.getPath('temp'), `auto-transcribe-${Date.now()}-${Math.random().toString(16).slice(2, 10)}.wav`);
+  let preparationError = null;
   try {
-    await extractSpeechAudio(safe, wavPath, 'wav');
-  } catch (error) {
-    if (/FFmpeg is unavailable|binary was not found/i.test(error.message || '')) throw error;
-    throwIfRecordingProcessingCancelled(safe);
-    const text = '[No audio track was captured in this recording]';
-    const saved = saveTranscriptBesideRecording(safe, text);
-    const srtText = '';
-    saveTranscriptVerification(safe, text, srtText, { noAudio: true });
-    return { text, srtText, txtPath: saved.txt, srtPath: '', model: AUTO_TRANSCRIPTION_MODEL, noAudio: true, cached: false };
-  }
-  const extractionMs = Date.now() - transcriptionStartedAt;
-  try {
+    await waitForAutomaticTranscriptionIdle(safe);
+    try {
+      await extractSpeechAudio(safe, wavPath, 'wav');
+    } catch (error) {
+      throwIfRecordingProcessingCancelled(safe);
+      // A damaged recording, disk failure or unavailable decoder is a failed
+      // extraction, not proof of silence. Keep it retryable instead of saving a
+      // false "No audio" transcript that would permanently bypass future work.
+      if (!/output file does not contain any stream|matches no streams/i.test(error.message || '')) throw error;
+      const text = '[No audio track was captured in this recording]';
+      const saved = saveTranscriptBesideRecording(safe, text);
+      const srtText = '';
+      saveTranscriptVerification(safe, text, srtText, { noAudio: true });
+      return { text, srtText, txtPath: saved.txt, srtPath: '', model: AUTO_TRANSCRIPTION_MODEL, noAudio: true, cached: false };
+    }
+    const extractionMs = Date.now() - transcriptionStartedAt;
     const wavInfo = fs.statSync(wavPath);
     if (!wavInfo.size || wavInfo.size <= 44) {
       throwIfRecordingProcessingCancelled(safe);
@@ -4572,7 +4689,7 @@ async function transcribeRecordingAutomatically(recordingPath, force = false) {
       wavPath,
       cacheDir: path.join(app.getPath('userData'), 'models'),
       model: AUTO_TRANSCRIPTION_MODEL
-    }, 30 * 60 * 1000, { preemptLowerPriority: true, staleTimeoutMs: 3 * 60 * 1000, stallRetries: 1 });
+    }, automaticTranscriptionTimeoutMs(wavInfo.size), { preparationId, preemptLowerPriority: true, staleTimeoutMs: 3 * 60 * 1000, stallRetries: 1 });
     throwIfRecordingProcessingCancelled(safe);
     // Timings contain no transcript, recording name, path or audio content.
     activityLog('info', 'ai.transcription-performance', {
@@ -4590,7 +4707,11 @@ async function transcribeRecordingAutomatically(recordingPath, force = false) {
     const saved = saveTranscriptBesideRecording(safe, text);
     saveTranscriptVerification(safe, text, srt, output?.quality || {});
     return { text, srtText: srt, txtPath: saved.txt, srtPath: '', model: AUTO_TRANSCRIPTION_MODEL, cached: false, quality: output?.quality || {}, needsRefresh: false };
+  } catch (error) {
+    preparationError = error;
+    throw error;
   } finally {
+    aiWorkerManager.finishPreparation(preparationId, preparationError);
     try { fs.unlinkSync(wavPath); } catch {}
   }
 }
@@ -4599,12 +4720,23 @@ function ensureAutomaticTranscriptionJob(recordingPath, force = false) {
   const safe = safeRecordingPath(recordingPath);
   if (automaticTranscriptionJobs.has(safe)) return automaticTranscriptionJobs.get(safe);
   cancelledRecordingProcessing.delete(safe);
+  const pending = loadAutomaticTranscriptionJournal().get(safe);
+  if (pending && pending.state !== 'pending') { pending.state = 'pending'; persistAutomaticTranscriptionJournal(); }
   const job = recordingProcessingContext.run({ recordingPath: safe }, () => transcribeRecordingAutomatically(safe, force))
     .then((result) => {
+      removePendingAutomaticTranscription(safe);
       // The transcript is primary. Speaker detection follows at lower AI priority
       // and is also paused automatically if a new recording starts.
       void getOrGenerateSpeakerDiarization(safe, false).catch((error) => appendAiWorkerLog(`Automatic speaker detection failed for ${path.basename(safe)}: ${error?.message || error}`));
       return result;
+    })
+    .catch((error) => {
+      const entry = loadAutomaticTranscriptionJournal().get(safe);
+      if (!appIsQuitting && entry) {
+        if (['AI_CANCELLED', 'RECORDING_PROCESSING_CANCELLED'].includes(error?.code)) removePendingAutomaticTranscription(safe);
+        else { entry.state = 'failed'; persistAutomaticTranscriptionJournal(); }
+      }
+      throw error;
     })
     .finally(() => automaticTranscriptionJobs.delete(safe));
   automaticTranscriptionJobs.set(safe, job);
@@ -4628,6 +4760,7 @@ function sanitizedRecordingName(value, extension = '.mp4') {
 function renameRecordingAndTranscript(recordingPath, requestedName) {
   const source = safeRecordingPath(recordingPath);
   if (!fs.existsSync(source)) throw new Error('Recording was not found.');
+  if (automaticTranscriptionJobs.has(source)) throw new Error('Wait for transcription to finish before renaming this recording.');
   if (automaticDiarizationJobs.has(source)) throw new Error('Wait for speaker detection to finish before renaming this recording.');
   const newName = sanitizedRecordingName(requestedName, path.extname(source));
   const target = safeRecordingPath(path.join(recordingsDirectory(), newName));
@@ -4658,6 +4791,12 @@ function renameRecordingAndTranscript(recordingPath, requestedName) {
   try { audioSourceManager.rename(source, target); }
   catch (error) { activityLog('warn', 'audio.sources-rename-failed', { error }); }
   if (lastRecordingPath === source) lastRecordingPath = target;
+  const pending = loadAutomaticTranscriptionJournal().get(source);
+  if (pending) {
+    loadAutomaticTranscriptionJournal().delete(source);
+    loadAutomaticTranscriptionJournal().set(target, { ...pending, path: target, fingerprint: recordingAudioFingerprint(target) });
+    persistAutomaticTranscriptionJournal();
+  }
   return { path: target, name: newName, url: `recording://media?path=${encodeURIComponent(target)}`, txtPath: newTranscripts.txt, srtPath: fs.existsSync(newTranscripts.srt) ? newTranscripts.srt : '' };
 }
 
@@ -4978,6 +5117,7 @@ async function stopBackgroundWork() {
   const recoveryResult = startupRecoveryInProgress
     ? requestRecoveryCancellation('Recovery was stopped from About & Diagnostics. The unfinished recording remains protected for later.', { pauseMode: 'user' })
     : { requested: false };
+  removeAllPendingAutomaticTranscriptions();
   const cancelledAiJobs = aiWorkerManager.cancelWhere(() => true);
 
   const finalizationIds = [...sealedRecordingSessions.keys()];
@@ -5245,6 +5385,11 @@ app.whenReady().then(async () => {
       } else if (requestUrl.hostname === 'deepfilter') {
         root = path.join(__dirname, 'node_modules', 'deepfilternet3-noise-filter', 'dist');
         defaultAsset = 'index.esm.js';
+      } else if (requestUrl.hostname === 'aec3') {
+        // Bundle the reference echo canceller with the app. It never fetches a
+        // model, native dependency, or recorded audio from an external service.
+        root = path.join(__dirname, 'renderer', 'vendor', 'aec3');
+        defaultAsset = 'webrtcaec3-0.3.0.mjs';
       } else {
         return new Response('Not found', { status: 404 });
       }
@@ -5256,7 +5401,7 @@ app.whenReady().then(async () => {
       }
       if (!fs.existsSync(assetPath) || !fs.statSync(assetPath).isFile()) return new Response('Not found', { status: 404 });
       const ext = path.extname(assetPath).toLowerCase();
-      const contentType = ext === '.wasm' ? 'application/wasm' : ext === '.js' ? 'text/javascript; charset=utf-8' : 'application/octet-stream';
+      const contentType = ext === '.wasm' ? 'application/wasm' : ['.js', '.mjs'].includes(ext) ? 'text/javascript; charset=utf-8' : 'application/octet-stream';
       const body = fs.readFileSync(assetPath);
       return new Response(body, { status: 200, headers: { 'Content-Type': contentType, 'Cache-Control': 'public, max-age=31536000, immutable', 'Access-Control-Allow-Origin': '*' } });
     } catch (error) {
@@ -5371,6 +5516,7 @@ app.whenReady().then(async () => {
   updateManager.init();
   registerGlobalRecorderShortcuts();
   void runStartupMaintenance(pendingRecoveryAtLaunch);
+  setTimeout(() => { void resumePendingAutomaticTranscriptions(); }, 1200);
 
   app.on('activate', () => {
     if (!mainWindow || mainWindow.isDestroyed() || BrowserWindow.getAllWindows().length === 0) {
@@ -6012,7 +6158,6 @@ ipcMain.handle('recording:finalize-sealed', async (_event, sessionId) => {
     activityLog('error', 'recording.finalize-failed', { sessionId: String(sessionId || ''), error });
     throw error;
   } finally {
-    if (!activeTempPath && !activeWriteStream && sealedRecordingSessions.size === 0) setRecordingResourcePriority(false, 'recording-save-finished');
     if (MY_VOICE_HIGHLIGHTS_ENABLED && completedResult?.path && loadVoiceProfile()?.embedding?.length) setTimeout(() => refineVoiceHighlightsWithEnrollment(completedResult.path), 0);
   }
 });
@@ -6111,7 +6256,11 @@ ipcMain.handle('recordings:insights-generate', async (_event, recordingPath) => 
 ipcMain.handle('recordings:insights-correct', (_event, payload = {}) => correctRecordingInsight(payload.recordingPath, payload));
 
 ipcMain.handle('ai:status', () => aiWorkerManager.snapshot());
-ipcMain.handle('ai:cancel', (_event, jobId) => aiWorkerManager.cancel(jobId));
+ipcMain.handle('ai:cancel', (_event, jobId) => {
+  const job = aiWorkerManager.jobs.get(jobId) || aiWorkerManager.preparationJobs.get(jobId);
+  if (job?.payload?.task === 'transcribe' && job.payload.recordingPath) removePendingAutomaticTranscription(job.payload.recordingPath);
+  return aiWorkerManager.cancel(jobId);
+});
 
 ipcMain.handle('recording:set-active', (_event, recordingPath) => {
   const safe = safeRecordingPath(recordingPath);

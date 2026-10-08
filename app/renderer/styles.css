@@ -8628,9 +8628,44 @@ body:not(.compact-mode) #transparencyButton { display: none !important; }
 body.compact-mode #transparencyButton { display: inline-flex !important; align-items: center; gap: 4px; flex: 0 0 auto; padding: 0 2px; }
 body.compact-mode #transparencySlider { -webkit-appearance: none; appearance: none; width: 58px; min-width: 58px; height: 18px; margin: 0; padding: 0; border: 0; border-radius: 0; background: transparent; box-shadow: none; cursor: pointer; }
 body.compact-mode #transparencySlider::-webkit-slider-runnable-track { height: 3px; border: 0; border-radius: 3px; background: color-mix(in srgb,var(--accent) 32%,var(--surface-2)); }
-body.compact-mode #transparencySlider::-webkit-slider-thumb { -webkit-appearance: none; width: 9px; height: 9px; margin-top: -3px; border: 1px solid var(--accent); border-radius: 50%; background: var(--surface-1); box-shadow: none; }
+/* v0.2.147: a small painted tab inside the unchanged native range control.
+   The transparent 18px thumb height is easier to grab without enlarging the
+   visible 9 x 7px tab or changing the original 9px-wide horizontal travel. */
+body.compact-mode #transparencySlider {
+  --mini-transparency-tab: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='7' viewBox='0 0 9 7'%3E%3Crect x='.5' y='.5' width='8' height='6' rx='2' fill='%239bcacb' stroke='%237e9197'/%3E%3C/svg%3E");
+  --mini-transparency-tab-focused: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='7' viewBox='0 0 9 7'%3E%3Crect x='.5' y='.5' width='8' height='6' rx='2' fill='%239bcacb' stroke='%23b6c7cc'/%3E%3C/svg%3E");
+  outline: none !important; box-shadow: none !important;
+  background: transparent !important; border: 0 !important;
+  filter: none; transform: none; transition: none;
+  touch-action: none; -webkit-tap-highlight-color: transparent;
+}
+html[data-theme="light"] body.compact-mode #transparencySlider {
+  --mini-transparency-tab: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='7' viewBox='0 0 9 7'%3E%3Crect x='.5' y='.5' width='8' height='6' rx='2' fill='%23c3e6e4' stroke='%239facb2'/%3E%3C/svg%3E");
+  --mini-transparency-tab-focused: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='9' height='7' viewBox='0 0 9 7'%3E%3Crect x='.5' y='.5' width='8' height='6' rx='2' fill='%23c3e6e4' stroke='%236b7c84'/%3E%3C/svg%3E");
+}
+body.compact-mode #transparencySlider::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  box-sizing: border-box; width: 9px; height: 18px; margin-top: -7.5px;
+  padding: 0; border: 0; border-radius: 0;
+  background: var(--mini-transparency-tab) center / 9px 7px no-repeat transparent;
+  box-shadow: none; outline: none; filter: none; transform: none; transition: none;
+}
+body.compact-mode #transparencySlider::-moz-range-thumb {
+  appearance: none; box-sizing: border-box; width: 9px; height: 18px;
+  padding: 0; border: 0; border-radius: 0;
+  background: var(--mini-transparency-tab) center / 9px 7px no-repeat transparent;
+  box-shadow: none; outline: none; filter: none; transform: none; transition: none;
+}
+/* Keyboard focus changes only the tab's fine neutral edge, never the track or
+   input surface. Pointer hover, press and drag retain the ordinary tab colours. */
+body.compact-mode #transparencySlider:focus-visible::-webkit-slider-thumb {
+  background-image: var(--mini-transparency-tab-focused);
+}
+body.compact-mode #transparencySlider:focus-visible::-moz-range-thumb {
+  background-image: var(--mini-transparency-tab-focused);
+}
 body.compact-mode #transparencyValue { width: 22px; min-width: 22px; font-size: 8px; color: var(--text-2); font-variant-numeric: tabular-nums; line-height: 1; }
-body.compact-mode #transparencySlider:focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
+body.compact-mode #transparencySlider:focus-visible { outline: none !important; box-shadow: none !important; }
 
 /* A quiet toolbar, one live action row, and two slim information lines. */
 body.compact-mode { background: transparent !important; }
@@ -9075,7 +9110,8 @@ body:not(.compact-mode).player-fullscreen #playbackView .playback-chapter-sideba
    Scope every rule to Full Playback so Record and the 262 × 84 Mini stay intact. */
 body:not(.compact-mode) #mainLayout.playback-mode #workspacePanel { min-width: 0; padding: 16px; }
 body:not(.compact-mode) #mainLayout.playback-mode .workspace-nav { flex-wrap: wrap; margin-bottom: 14px; padding-bottom: 12px; }
-body:not(.compact-mode) #mainLayout.playback-mode .workspace-playback-actions { display: none; }
+body:not(.compact-mode) #mainLayout.playback-mode .workspace-playback-actions { display: inline-flex; }
+body:not(.compact-mode) #mainLayout.playback-mode .workspace-playback-actions #refreshRecordings { display: none; }
 body:not(.compact-mode) #playbackView .playback-heading { display: none; }
 body:not(.compact-mode) #playbackView .playback-layout { gap: 7px; }
 body:not(.compact-mode) #playbackView .recording-browser {
@@ -9111,7 +9147,7 @@ body:not(.compact-mode) #playbackView .recording-favorite-button { width: 23px; 
 body:not(.compact-mode) #playbackView .recording-favorite-button.active,
 body:not(.compact-mode) #playbackView .recording-item:is(:hover,:focus-within) .recording-favorite-button { opacity: 1; }
 body:not(.compact-mode) #playbackView #playbackDetails:not(.hidden) { grid-template-columns: minmax(0,1fr) 286px; gap: 15px; }
-body:not(.compact-mode) #playbackView .playback-player-column { gap: 12px; padding: 2px 1px 0; }
+body:not(.compact-mode) #playbackView .playback-player-column { grid-column: 1; grid-row: 1; gap: 12px; padding: 2px 1px 0; }
 body:not(.compact-mode) #playbackView .playback-title-row { gap: 5px; padding: 1px 2px 3px; }
 body:not(.compact-mode) #playbackView #playbackFileName { font-size: 15px; font-weight: 600; letter-spacing: -.015em; }
 body:not(.compact-mode) #playbackView .playback-name-group { align-items: start; }
@@ -9142,6 +9178,18 @@ body:not(.compact-mode) #playbackView .transport-play { width: 38px !important; 
 body:not(.compact-mode) #playbackView .playback-actions-row { justify-content: space-between; flex-wrap: wrap; padding: 9px 2px 0; margin-top: 0; border-top: 1px solid var(--desk-line); gap: 6px; }
 body:not(.compact-mode) #playbackView .playback-actions-row .button { background: transparent !important; border-color: transparent !important; font-weight: 500; font-size: 11px; }
 body:not(.compact-mode) #playbackView .playback-actions-row .button:hover { background: var(--desk-blue) !important; }
+body:not(.compact-mode) #playbackView .playback-bookmark-controls { display: inline-flex; align-items: center; flex: 0 0 auto; gap: 4px; }
+body:not(.compact-mode) #playbackView .playback-bookmark-controls .player-icon-button {
+  display: inline-flex; align-items: center; justify-content: center; flex: 0 0 28px;
+  width: 28px !important; min-width: 28px !important; max-width: 28px !important;
+  height: 30px !important; min-height: 30px !important; padding: 5px !important;
+  border: 1px solid transparent !important; border-radius: 7px; box-shadow: none !important;
+}
+body:not(.compact-mode) #playbackView .playback-bookmark-controls .player-icon-button svg { width: 17px; height: 17px; }
+body:not(.compact-mode) #playbackView .playback-bookmark-controls .player-icon-button:not(:disabled):hover { background: var(--desk-blue) !important; color: var(--desk-blue-ink) !important; }
+body:not(.compact-mode) #playbackView .playback-bookmark-controls .player-icon-button:disabled { opacity: .4 !important; }
+body:not(.compact-mode) #playbackView .playback-folder-action { display: inline-flex; align-items: center; gap: 5px; white-space: nowrap; }
+body:not(.compact-mode) #playbackView .playback-folder-action svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 body:not(.compact-mode) #playbackView .quiet-export-button { display: inline-flex; align-items: center; gap: 6px; }
 body:not(.compact-mode) #playbackView .quiet-export-button svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
 body:not(.compact-mode) #playbackView .playback-inspector { height: calc(100vh - 220px); max-height: calc(100vh - 220px); border-radius: 11px; }
@@ -9290,3 +9338,32 @@ body:not(.compact-mode) #playbackView .library-refine-menu { width: 244px; }
 body:not(.compact-mode) #playbackView .library-refine-menu .recording-sort-row,
 body:not(.compact-mode) #playbackView .library-refine-menu .recording-filter-label { display: grid; grid-template-columns: 1fr; align-items: start; gap: 5px; margin: 0; padding: 7px 9px; font-size: 10px; }
 body:not(.compact-mode) #playbackView .library-refine-menu .recording-organizer { padding: 0; margin: 0; border: 0; }
+
+
+/* v0.2.145 — Mini keeps recording controls at 262 × 84. Review update
+   details and choices only after restoring the normal Full window. */
+.compact-update-dot { display: none; }
+body.compact-mode #compactFullViewButton { position: relative; }
+body.compact-mode #compactFullViewButton.has-update .compact-update-dot {
+  display: block; position: absolute; top: 1px; right: 1px; width: 5px; height: 5px;
+  border-radius: 50%; background: #2187d4; box-shadow: 0 0 0 1px var(--surface-1);
+}
+body.compact-mode .compact-update-review:not(.hidden) {
+  grid-row: 3; grid-column: 1 / -1; display: block !important; justify-self: end;
+  width: auto; max-width: 100%; min-width: 0; height: 10px; min-height: 10px;
+  margin: 0; padding: 0 1px; border: 0; border-radius: 2px;
+  background: transparent; color: var(--accent); box-shadow: none;
+  font-size: 7px; line-height: 10px; font-weight: 500; white-space: nowrap;
+  overflow: hidden; text-overflow: ellipsis; cursor: pointer; -webkit-app-region: no-drag;
+}
+body.compact-mode .compact-update-review:not(.hidden):hover { text-decoration: underline; }
+body.compact-mode .compact-update-review:not(.hidden):focus-visible { outline: 1px solid var(--accent); outline-offset: 1px; }
+body.compact-mode.compact-update-notice .compact-status:not(.error) { display: none !important; }
+body.compact-mode .compact-recorder-card:has(.compact-ai-mini:not(.hidden)) .compact-update-review { grid-column: 2; }
+body.compact-mode .compact-recorder-card:has(.compact-status.error) .compact-update-review,
+body.compact-mode .compact-recorder-card:has(.compact-feedback:not(.hidden)) .compact-update-review,
+body.compact-mode:has(#recordingBookmarkTextEditor:not(.hidden)) .compact-update-review { display: none !important; }
+.update-available-header-tools { display: flex; flex-direction: column; align-items: flex-end; flex: 0 0 auto; gap: 8px; }
+.update-available-header-tools #updateReturnToMini { min-height: 28px; padding: 5px 9px; font-size: 11px; white-space: nowrap; }
+
+body.compact-mode .compact-update-review.hidden { display: none !important; }

@@ -54,7 +54,7 @@
       source: getDiagnostics(sourceStream),
       speechFallback: getDiagnostics(speechFallbackStream),
       processedSettings: processedTrack ? safeSettings(processedTrack) : null,
-      noiseMethod: ['rnnoise-local-neural', 'chromium-voice-isolation', 'webrtc-noise-suppression', 'webrtc-speech-processing'].includes(noiseMethod) ? noiseMethod : 'none'
+      noiseMethod: ['rnnoise-local-neural', 'chromium-voice-isolation', 'webrtc-noise-suppression', 'webrtc-speech-processing', 'webrtc-aec3-system-reference', 'webrtc-aec3+rnnoise-local-neural', 'webrtc-aec3+chromium-voice-isolation', 'webrtc-aec3+webrtc-noise-suppression'].includes(noiseMethod) ? noiseMethod : 'none'
     };
   }
 

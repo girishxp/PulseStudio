@@ -1,6 +1,6 @@
 # PulseStudio Analytics
 
-PulseStudio v0.2.144 remains connected to the PulseStudio PostHog Cloud project (US region).
+PulseStudio v0.2.148 remains connected to the PulseStudio PostHog Cloud project (US region).
 This release preserves the existing backend configuration, anonymous installation
 identity, and saved analytics preference while updating the reported app version.
 
@@ -12,7 +12,7 @@ PulseStudio never includes recordings, screen contents, microphone/system audio,
 
 ## Core analytics available
 
-PulseStudio v0.2.144 retains the privacy-limited instrumentation from v0.2.129 for product usage, trends, reliability, and errors, with the same PostHog project token. Event properties use control IDs, categorical settings, counters, duration buckets, and sanitized error names/codes rather than user content.
+PulseStudio v0.2.148 retains the privacy-limited instrumentation from v0.2.129 for product usage, trends, reliability, and errors, with the same PostHog project token. Event properties use control IDs, categorical settings, counters, duration buckets, and sanitized error names/codes rather than user content.
 
 - Active installations and sessions (`app_started`, `app_heartbeat`, `app_closed`), session IDs, launch counts and install-age trends
 - App version, OS, architecture, Electron version and portable/installed mode

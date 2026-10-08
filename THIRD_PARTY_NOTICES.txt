@@ -53,7 +53,7 @@ and its LICENSE, along with the dependency packages' upstream license files.
 Purpose: local click-to-launch setup and dependency checks without changing the
 computer's system Node installation.
 
-Prepared Windows desktop runtime (v0.2.144)
+Prepared Windows desktop runtime (v0.2.148)
 ------------------------------------------
 Includes official Electron 43.3.0 for Windows x64, FFmpeg, the Windows native
 capture/input/AI dependencies, and Microsoft's app-local Visual C++ runtime.
@@ -70,3 +70,10 @@ ONNX Runtime 1.30.0: MIT license and upstream notices in Third-Party-Licenses.
 Sharp 0.35.4 / libvips 8.18.6: Apache / LGPL notices in Third-Party-Licenses.
 Microsoft Visual C++ runtime 14.44.35211: app-local x64 libraries and the
 upstream redistributable RTF license are retained beside PulseStudio.exe.
+
+WebRTC AEC3 via @ennuicastr/webrtcaec3.js 0.3.0 (bundled JavaScript/WASM)
+Source: https://github.com/ennuicastr/webrtcaec3.js
+WebRTC: BSD-3-Clause and patent grant; Abseil: Apache-2.0; wrapper glue: ISC/0-clause BSD.
+Full notices and pinned source/binary hashes: app/renderer/vendor/aec3/LICENSES.txt
+and PROVENANCE.json. Assets are bundled for both platforms; no runtime download
+or remote audio processing is required.
