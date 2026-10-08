@@ -1,4 +1,4 @@
-# Publishing PulseStudio v0.2.143
+# Publishing PulseStudio v0.2.144
 
 The Mac and Windows publishers are in the same PulseStudio folder:
 
@@ -58,14 +58,14 @@ so the publisher cannot discard local work.
 
 ## Publish the complete shared package
 
-Put **PulseStudio-cross-platform-v0.2.143.zip** beside the publisher or in
+Put **PulseStudio-cross-platform-v0.2.144.zip** beside the publisher or in
 **Downloads**, then double-click the appropriate file. The publisher chooses
 the newest matching ZIP by modification time. You can supply an exact ZIP path
 instead when more than one build is present.
 
 Review the version, repository, ZIP checksum, and list of prepared source changes.
 The final confirmation defaults to **No**. Choosing **Yes** commits source,
-pushes main, creates **v0.2.143**, uploads the complete shared ZIP and marks the
+pushes main, creates **v0.2.144**, uploads the complete shared ZIP and marks the
 public release **Latest**. Existing release tags are never overwritten.
 
 One upload serves both Mac and Windows clients. Bundled runtimes, dependency

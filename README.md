@@ -1,4 +1,18 @@
-# PulseStudio v0.2.143
+# PulseStudio v0.2.144
+
+## v0.2.144 Playback library action layout
+
+- Fixes the recording-row action menu so the category selector, Rename and
+  Move to Trash remain readable instead of being squeezed into one row.
+- Keeps the playlist play, favorite and more-action buttons aligned and
+  available with their existing behavior. All library, playback, Record and
+  Mini controls remain available.
+- Keeps the Playback workspace within narrower windows so controls at its edges
+  stay visible instead of being clipped.
+- Updates About, launcher metadata and documentation to v0.2.144. Existing Help
+  still describes all recording-row actions. The shared Mac/Windows folder, idle and recording artwork, audio processing,
+  transcription, saved settings, analytics, update checks and publishers are
+  retained.
 
 ## v0.2.143 Mac Dock branding, deeper recording colour and Windows publishing
 
@@ -687,7 +701,8 @@ right. In a narrower window, the inspector stacks below the player.
 
 - **Library:** search, All/Video/Audio/Favorites filters, categories, selection,
   and batch Trash stay with the recording list. Each recording keeps its
-  favorite, rename, Trash, and category actions.
+  favorite button and a **More** menu for category, rename, and Trash actions.
+  The menu stacks these controls so each has room, including in a narrow library.
 - **Player:** waveform, transport, bookmarks, snapshots, CC, volume, speed,
   and fullscreen remain together. Related file and export actions are grouped
   beside the player. Open an action group for less-frequent controls.
@@ -781,7 +796,7 @@ The original macOS `.command` remains available for troubleshooting.
 ### macOS runtime identity
 
 **PulseStudio.app** is the clickable launcher. Before it opens the recording
-host, v0.2.143 prepares the physical host folder as **Pulse Studio.app** and
+host, v0.2.144 prepares the physical host folder as **Pulse Studio.app** and
 keeps **Electron.app** as a compatibility link to that same host. The existing
 executable bytes, bundle identifier, signing requirements and established
 PulseStudio data folder are preserved. The Apple silicon runtime in this ZIP
@@ -824,7 +839,7 @@ For screen capture in this local ZIP:
 1. Open **System Settings → Privacy & Security → Screen & System Audio Recording**.
 2. Enable the current recording host, shown as **Electron** or **Pulse Studio**.
 3. Quit any older PulseStudio build that is still running.
-4. Start v0.2.143 using `PulseStudio.app`.
+4. Start v0.2.144 using `PulseStudio.app`.
 5. Choose **Refresh** only if the source thumbnails have not appeared automatically.
 
 The stock host retains its Electron bundle identity even when the Dock name is Pulse Studio. There is no need to delete an existing permission row for this update.
@@ -855,7 +870,7 @@ The extracted folder is intentionally simple:
 
 - `README.md` — this guide
 - `QUICK_START.txt` — launch and Mini View instructions
-- `RELEASE_NOTES-v0.2.143.md` — changes and retained features in this release
+- `RELEASE_NOTES-v0.2.144.md` — changes and retained features in this release
 - `PulseStudio.app` — clickable macOS launcher
 - `Start PulseStudio - macOS.command` — macOS troubleshooting launcher
 - `Start PulseStudio - Windows.bat` — Windows launcher
@@ -911,8 +926,8 @@ trigger updates: a newer semantic version and matching downloadable ZIP must be
 published as a public **Latest** release. Both publishers ask before commit,
 push and release creation; this delivery has not been published automatically.
 
-This release uses tag `v0.2.143` and asset
-`PulseStudio-cross-platform-v0.2.143.zip`. Bundled platform runtimes remain in
+This release uses tag `v0.2.144` and asset
+`PulseStudio-cross-platform-v0.2.144.zip`. Bundled platform runtimes remain in
 that downloadable ZIP and are excluded from Git source commits. The portable
 ZIP updater preserves its established update behavior; no AWS server is needed.
 

@@ -7258,8 +7258,8 @@ function initQuietStudioPlayback() {
     if (!menu) return;
     if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeQuietPlaybackMenus(true); return; }
     if (event.key === 'Tab') {
-      if (menu.id === 'libraryRefineMenu') {
-        const fields = [...menu.querySelectorAll('select:not(:disabled)')];
+      if (menu.id === 'libraryRefineMenu' || menu.closest('.recording-row-actions')) {
+        const fields = [...menu.querySelectorAll('button:not(:disabled),select:not(:disabled),input:not(:disabled)')];
         const index = fields.indexOf(document.activeElement);
         if ((!event.shiftKey && index === fields.length - 1) || (event.shiftKey && index === 0)) closeQuietPlaybackMenus(true);
       } else closeQuietPlaybackMenus();
@@ -7983,7 +7983,7 @@ async function init() {
   state.platformInfo = info;
   applyStartupRecoveryState({ inProgress: Boolean(info.startupRecoveryInProgress) });
   document.documentElement.dataset.platform = info.platform;
-  $('aboutVersion').textContent = info.version || '0.2.143';
+  $('aboutVersion').textContent = info.version || '0.2.144';
   renderWindowCapturePrivacy(await window.recorderAPI.getWindowCapturePrivacy?.().catch(() => ({ enabled: true, supported: info.platform === 'darwin' || info.platform === 'win32' })) || { enabled: true, supported: true });
   const applicationAudioOption = $('computerAudioMode')?.querySelector('option[value="application"]');
   if (applicationAudioOption && !info.applicationAudioSupported) applicationAudioOption.disabled = true;

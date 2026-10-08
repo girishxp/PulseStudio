@@ -9073,8 +9073,8 @@ body:not(.compact-mode).player-fullscreen #playbackView .playback-chapter-sideba
 
 /* Quiet Studio: a calmer library, one transport row, and contextual review tools.
    Scope every rule to Full Playback so Record and the 262 × 84 Mini stay intact. */
-body:not(.compact-mode) #mainLayout.playback-mode #workspacePanel { padding: 16px; }
-body:not(.compact-mode) #mainLayout.playback-mode .workspace-nav { margin-bottom: 14px; padding-bottom: 12px; }
+body:not(.compact-mode) #mainLayout.playback-mode #workspacePanel { min-width: 0; padding: 16px; }
+body:not(.compact-mode) #mainLayout.playback-mode .workspace-nav { flex-wrap: wrap; margin-bottom: 14px; padding-bottom: 12px; }
 body:not(.compact-mode) #mainLayout.playback-mode .workspace-playback-actions { display: none; }
 body:not(.compact-mode) #playbackView .playback-heading { display: none; }
 body:not(.compact-mode) #playbackView .playback-layout { gap: 7px; }
@@ -9182,13 +9182,17 @@ body:not(.compact-mode) #playbackView .quiet-icon-button:disabled { cursor: defa
 body:not(.compact-mode) #playbackView .quiet-icon-button:focus-visible { outline: 2px solid var(--desk-blue-ink); outline-offset: 1px; }
 body:not(.compact-mode) #playbackView .recording-options-button { width: 23px; min-width: 23px; height: 25px; min-height: 25px; font-size: 17px; }
 body:not(.compact-mode) #playbackView .quiet-menu {
-  position: fixed; inset: auto; right: auto !important; bottom: auto !important; transform: none; z-index: 16000; display: grid; gap: 2px; width: 218px;
+  position: fixed; inset: auto; right: auto !important; bottom: auto !important; transform: none; z-index: 16000; display: grid; grid-template-columns: minmax(0,1fr); gap: 2px; width: 218px;
   min-width: 0; max-width: calc(100vw - 16px); padding: 6px;
   border: 1px solid var(--desk-line); border-radius: 10px; overflow: auto;
   background: var(--desk-surface); color: var(--desk-ink);
   box-shadow: 0 9px 28px #14263822; font-size: 12px;
 }
 body:not(.compact-mode) #playbackView .quiet-menu.hidden { display: none; }
+/* Popup actions share one column. Reset the original playlist icon-grid
+   coordinates, including batch-mode rules, after moving actions into menus. */
+body:not(.compact-mode) #playbackView .quiet-menu > *,
+body:not(.compact-mode) #playbackView .quiet-menu .recording-category-select { grid-area: auto; min-width: 0; }
 body:not(.compact-mode) #playbackView .quiet-menu button {
   display: flex; align-items: center; justify-content: flex-start; gap: 8px;
   width: 100% !important; min-width: 0 !important; max-width: none !important;

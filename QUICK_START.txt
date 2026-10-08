@@ -1,4 +1,4 @@
-PulseStudio 0.2.143 — one shared folder for Mac and Windows
+PulseStudio 0.2.144 — one shared folder for Mac and Windows
 =========================================================
 
 1. Extract the complete ZIP into a writable location.
@@ -13,7 +13,7 @@ The included application components are ready for Apple silicon Mac and
 64-bit Windows. Apple silicon Mac first launch unpacks its bundled runtime
 locally, without a setup download. Windows launches its included executable
 directly; no Node installation, dependency download, or build is needed.
-Before Mac launch, v0.2.143 prepares the physical host as Pulse Studio.app,
+Before Mac launch, v0.2.144 prepares the physical host as Pulse Studio.app,
 with an Electron.app compatibility link to the same executable and bundle ID.
 Quit an older PulseStudio instance completely before opening the updated app.
 A running host is never moved; the launcher asks you to quit and reopen if needed.
@@ -63,7 +63,9 @@ waveform, transport, bookmarks, snapshots, CC, volume, speed, and fullscreen
 stay in the center. Related file and export actions are grouped beside the
 player. Search, filters, categories, favorites, rename, Trash, and batch
 selection remain available in the library. Open an action group for the
-less-frequent controls without leaving the recording.
+less-frequent controls without leaving the recording. The recording-row More
+menu gives category, rename and Trash their own readable rows; play and favorite
+remain directly beside each recording.
 
 Use the tools inspector on the right:
 - Transcript: views, search and exports, with speaker corrections in speaker view.
@@ -80,7 +82,8 @@ The recording-type/favorites filter remains on one row. Open Sort & filter
 for category choices and all eight date, duration, name and file-size sorts.
 The sort choice is remembered; Previous/Next follow that order. Drag the
 full-height divider between the library and player to resize them.
-In a narrower window, these tools stack below the player.
+In a narrower window, these tools stack below the player and the Playback
+workspace stays within the window so its edge controls remain visible.
 Recording setup stays in Record, and Mini stays a compact recording controller.
 
 Meeting audio and microphone cleanup
@@ -111,7 +114,7 @@ The Mac launcher is locally signed, without Apple notarization. If macOS blocks
 its first opening, review it in System Settings > Privacy & Security.
 If macOS asks to access the folder containing PulseStudio, allow that access
 so it can read its shared application files.
-v0.2.143 opens the physical Pulse Studio.app recording host and retains
+v0.2.144 opens the physical Pulse Studio.app recording host and retains
 Electron.app as a compatibility link to the same executable and bundle ID.
 Its executable, signature and established PulseStudio data folder are retained.
 A running host is never moved. Quit PulseStudio completely, then double-click
@@ -172,7 +175,7 @@ Publish PulseStudio - Windows.ps1 beside it in this same folder.
 
 Each selects the newest matching ZIP beside the publisher or in Downloads,
 then asks before commit, push and release creation. For this version, use
-PulseStudio-cross-platform-v0.2.143.zip. One complete upload serves both Mac
+PulseStudio-cross-platform-v0.2.144.zip. One complete upload serves both Mac
 and Windows users. Bundled runtimes are excluded from Git source commits.
 A source push alone does not notify users: the newer semantic version tag and
 matching ZIP must be published as a public Latest release. Nothing is published
@@ -211,5 +214,7 @@ the analytics switch/reminder and makes Pearl Screen recording colour clearer.
 v0.2.143 prepares the physical Pulse Studio.app host on Mac, deepens only the
 recording icon and adds Windows owner publishing next to the Mac publisher.
 The idle icon and common launch folder are retained.
+v0.2.144 fixes the Playback recording-row action layout while retaining the
+existing controls, icons and all recording and playback options.
 The compact Mini controls, natural tooltips, Mini-only 0–75% transparency,
 native controls, and shared prepared runtimes remain in place.
