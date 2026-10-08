@@ -32,6 +32,7 @@ NODE_VERSION=24.21.0
 NODE_ROOT="$APP_DIR/.pulsestudio-node-runtime/darwin-$NODE_ARCH"
 NODE_DIR="$NODE_ROOT/node-v$NODE_VERSION-darwin-$NODE_ARCH"
 ELECTRON_APP="$APP_DIR/node_modules/electron/dist/Electron.app"
+[ ! -x "$APP_DIR/node_modules/electron/dist/Pulse Studio.app/Contents/MacOS/Electron" ] || ELECTRON_APP="$APP_DIR/node_modules/electron/dist/Pulse Studio.app"
 ELECTRON_BIN="$ELECTRON_APP/Contents/MacOS/Electron"
 CACHE_MANIFEST="$APP_DIR/launcher-cache/manifest.json"
 
@@ -133,10 +134,14 @@ if [ ! -x "$APP_DIR/node_modules/ffmpeg-static/ffmpeg" ]; then
 fi
 node "$APP_DIR/launcher-dependencies.cjs" check || fail "The installed components do not match this Mac or the application requirements. Extract the complete ZIP and try again."
 node "$APP_DIR/launcher-dependencies.cjs" stamp || fail "The prepared runtime could not be saved. Check that this folder is writable."
+ELECTRON_APP="$(node "$APP_DIR/launcher-dependencies.cjs" host-path)" || fail "The Mac app name could not be prepared. Quit PulseStudio completely and open it again."
+ELECTRON_BIN="$ELECTRON_APP/Contents/MacOS/Electron"
+[ "${ELECTRON_APP:t}" = "Pulse Studio.app" ] || fail "The current PulseStudio app is still open, or its Mac name could not be prepared. Quit PulseStudio completely, then double-click PulseStudio.app again."
+[ -x "$ELECTRON_BIN" ] || fail "The prepared Mac app is missing. Extract the complete ZIP and try again."
 if pgrep -f '/PulseStudio.app/Contents/MacOS/PulseStudio([[:space:]]|$)' >/dev/null 2>&1; then
   fail "An older PulseStudio runtime is still open. Quit PulseStudio completely and try again."
 fi
 status "Opening PulseStudio…"
-printf 'Opening existing Electron host: %s\n' "$ELECTRON_APP" >> "$LOG_FILE"
+printf 'Opening Pulse Studio app: %s\n' "$ELECTRON_APP" >> "$LOG_FILE"
 /usr/bin/open -n "$ELECTRON_APP" --env "PATH=$PATH" --env "PULSESTUDIO_PORTABLE_ROOT=$ROOT_DIR" --args "$APP_DIR" || fail "macOS could not open PulseStudio. Review the setup log."
 exit 0

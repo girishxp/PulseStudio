@@ -8479,24 +8479,8 @@ body.player-fullscreen #videoPlayerShell.chapters-open .playback-chapter-sidebar
 }
 
 
-/* v0.2.113 anonymous analytics controls */
-.analytics-card { display: grid; gap: 8px; padding: 10px 0 2px; border-top: 1px solid var(--line); }
-.analytics-card-copy { display: grid; gap: 3px; }
-.analytics-card-copy > strong { color: var(--text-1); font-size: 11.5px; }
-.analytics-card-copy > span { color: var(--text-3); font-size: 10.5px; line-height: 1.35; }
-.analytics-toggle { width: 100%; }
-.analytics-toggle:not(.is-on) .apple-switch { opacity: .8; }
-.analytics-toggle[disabled] { opacity: .55; cursor: default; }
-.analytics-helper { margin: -1px 0 2px 38px; }
 
 
-/* v0.2.118 analytics restart reminder + feedback affordance */
-.analytics-reminder-modal { max-width: 520px; }
-.analytics-reminder-points { display: grid; gap: 8px; margin: 14px 0; }
-.analytics-reminder-points > span { display: block; padding: 9px 11px; border: 1px solid var(--line); border-radius: 10px; background: color-mix(in srgb, var(--surface-2) 72%, transparent); color: var(--text-2); font-size: 11px; line-height: 1.45; }
-.analytics-reminder-actions { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); align-items: stretch; gap: 10px; }
-.analytics-reminder-actions .button { width: 100%; min-height: 44px; height: 44px; margin: 0 !important; display: inline-flex; align-items: center; justify-content: center; white-space: nowrap; }
-@media (max-width: 560px) { .analytics-reminder-actions { grid-template-columns: 1fr; } }
 
 /* v0.2.125: actionable recovery/background-update safety messaging. */
 .diagnostics-content .helper.warning-text { color: var(--warning-color); font-weight: 650; }
@@ -9086,3 +9070,219 @@ body:not(.compact-mode).player-fullscreen #playbackView .playback-chapter-sideba
   body:not(.compact-mode) #playbackView .recording-browser { max-height: none; }
   body:not(.compact-mode) #playbackView .recording-list { min-height: 0; max-height: 260px; }
 }
+
+/* Quiet Studio: a calmer library, one transport row, and contextual review tools.
+   Scope every rule to Full Playback so Record and the 262 × 84 Mini stay intact. */
+body:not(.compact-mode) #mainLayout.playback-mode #workspacePanel { padding: 16px; }
+body:not(.compact-mode) #mainLayout.playback-mode .workspace-nav { margin-bottom: 14px; padding-bottom: 12px; }
+body:not(.compact-mode) #mainLayout.playback-mode .workspace-playback-actions { display: none; }
+body:not(.compact-mode) #playbackView .playback-heading { display: none; }
+body:not(.compact-mode) #playbackView .playback-layout { gap: 7px; }
+body:not(.compact-mode) #playbackView .recording-browser {
+  min-height: 0; max-height: calc(100vh - 220px); padding: 13px 11px;
+  border-radius: 11px; background: var(--desk-muted-surface); overflow: hidden;
+}
+body:not(.compact-mode) #playbackView .recording-browser-heading { margin-bottom: 12px; }
+body:not(.compact-mode) #playbackView .recording-browser-heading strong { font-size: 14px; font-weight: 600; letter-spacing: -.01em; }
+body:not(.compact-mode) #playbackView .recording-library-search { min-height: 34px; border-radius: 8px; }
+body:not(.compact-mode) #playbackView .recording-library-search input { font-size: 12px; }
+body:not(.compact-mode) #playbackView .quiet-media-filter { display: block; margin: 11px 0 7px; }
+body:not(.compact-mode) #playbackView .quiet-media-filter select { min-height: 31px; padding: 5px 8px; font-size: 11px; border-radius: 7px; }
+body:not(.compact-mode) #playbackView .recording-sort-row { gap: 7px; margin-bottom: 7px; font-size: 11px; }
+body:not(.compact-mode) #playbackView .recording-sort-row select { font-size: 11px; padding: 5px 7px; }
+body:not(.compact-mode) #playbackView .recording-organizer { display: block; margin-bottom: 4px; padding-bottom: 9px; }
+body:not(.compact-mode) #playbackView .recording-filter-label { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 400; text-transform: none; letter-spacing: 0; }
+body:not(.compact-mode) #playbackView .recording-filter-label select { flex: 1; font-size: 11px; min-height: 29px; }
+body:not(.compact-mode) #playbackView .recording-organizer-actions:empty { display: none; }
+body:not(.compact-mode) #playbackView .recording-list { min-height: 180px; padding-top: 2px; }
+body:not(.compact-mode) #playbackView .recording-date-section .recording-section-header { padding: 11px 4px 6px; font-size: 9px; font-weight: 550; letter-spacing: .06em; }
+body:not(.compact-mode) #playbackView .recording-item {
+  padding: 6px; margin-bottom: 1px; border-radius: 8px; background: transparent;
+  border-color: transparent; transition: background-color .12s ease;
+}
+body:not(.compact-mode) #playbackView .recording-item:hover { background: color-mix(in srgb,var(--desk-blue) 50%,transparent); }
+body:not(.compact-mode) #playbackView .recording-item.active { background: var(--desk-blue); border-color: transparent; }
+body:not(.compact-mode) #playbackView .recording-item-line { grid-template-columns: minmax(0,1fr) 23px 23px; align-items: center; gap: 2px; }
+body:not(.compact-mode) #playbackView .recording-item.batch-mode .recording-item-line { grid-template-columns: 18px minmax(0,1fr) 23px 23px; }
+body:not(.compact-mode) #playbackView .recording-item-name { font-size: 11px; font-weight: 550; }
+body:not(.compact-mode) #playbackView .recording-item-meta { font-size: 9px; line-height: 1.5; }
+body:not(.compact-mode) #playbackView .recording-type-icon { width: 18px; height: 18px; min-width: 18px; border-radius: 5px; }
+body:not(.compact-mode) #playbackView .recording-favorite-button { width: 23px; min-width: 23px; font-size: 15px; opacity: .55; }
+body:not(.compact-mode) #playbackView .recording-favorite-button.active,
+body:not(.compact-mode) #playbackView .recording-item:is(:hover,:focus-within) .recording-favorite-button { opacity: 1; }
+body:not(.compact-mode) #playbackView #playbackDetails:not(.hidden) { grid-template-columns: minmax(0,1fr) 286px; gap: 15px; }
+body:not(.compact-mode) #playbackView .playback-player-column { gap: 12px; padding: 2px 1px 0; }
+body:not(.compact-mode) #playbackView .playback-title-row { gap: 5px; padding: 1px 2px 3px; }
+body:not(.compact-mode) #playbackView #playbackFileName { font-size: 15px; font-weight: 600; letter-spacing: -.015em; }
+body:not(.compact-mode) #playbackView .playback-name-group { align-items: start; }
+body:not(.compact-mode) #playbackView .playback-badges { align-items: center; gap: 0; }
+body:not(.compact-mode) #playbackView .playback-badges .mini-badge {
+  padding: 0; margin: 0; border: 0; border-radius: 0; background: transparent;
+  font-size: 10px; line-height: 1.6; color: var(--desk-muted);
+}
+body:not(.compact-mode) #playbackView .playback-badges .mini-badge + .mini-badge::before { content: "·"; display: inline-block; padding: 0 6px; }
+body:not(.compact-mode) #playbackView #playbackMediaBadge { color: var(--desk-muted); background: transparent; }
+body:not(.compact-mode) #playbackView .video-player-shell { border: 0; border-radius: 10px; overflow: visible; background: transparent; }
+body:not(.compact-mode) #playbackView .video-viewport { overflow: hidden; border: 1px solid var(--desk-line); border-radius: 10px; }
+body:not(.compact-mode) #playbackView .video-viewport #playbackVideo { border: 0; border-radius: 0; }
+body:not(.compact-mode) #playbackView .player-toolbar { padding: 12px 2px 0; border: 0; background: transparent; }
+body:not(.compact-mode) #playbackView .player-progress-row { gap: 7px; }
+body:not(.compact-mode) #playbackView .waveform-timeline { height: 45px; border-radius: 8px; border-color: var(--desk-line); }
+body:not(.compact-mode) #playbackView .player-time { min-width: 40px; font-size: 9px; }
+body:not(.compact-mode) #playbackView .player-control-row,
+body:not(.compact-mode) #playbackView .video-player-shell.chapters-open .player-control-row {
+  justify-content: center !important; gap: 9px !important; padding-top: 11px !important;
+}
+body:not(.compact-mode) #playbackView .playback-tool-controls { padding-left: 8px !important; border-left: 1px solid var(--desk-line) !important; }
+body:not(.compact-mode) #playbackView .right-player-controls { margin-left: auto; }
+body:not(.compact-mode) #playbackView .player-control-row :is(.player-icon-button,.player-caption-button,.seek-button) {
+  width: 27px !important; min-width: 27px !important; height: 30px !important; min-height: 30px !important;
+}
+body:not(.compact-mode) #playbackView .transport-play { width: 38px !important; min-width: 38px !important; flex-basis: 38px !important; height: 33px !important; min-height: 33px !important; }
+body:not(.compact-mode) #playbackView .playback-actions-row { justify-content: space-between; flex-wrap: wrap; padding: 9px 2px 0; margin-top: 0; border-top: 1px solid var(--desk-line); gap: 6px; }
+body:not(.compact-mode) #playbackView .playback-actions-row .button { background: transparent !important; border-color: transparent !important; font-weight: 500; font-size: 11px; }
+body:not(.compact-mode) #playbackView .playback-actions-row .button:hover { background: var(--desk-blue) !important; }
+body:not(.compact-mode) #playbackView .quiet-export-button { display: inline-flex; align-items: center; gap: 6px; }
+body:not(.compact-mode) #playbackView .quiet-export-button svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+body:not(.compact-mode) #playbackView .playback-inspector { height: calc(100vh - 220px); max-height: calc(100vh - 220px); border-radius: 11px; }
+body:not(.compact-mode) #playbackView .playback-inspector-tabs { padding: 6px; gap: 2px; }
+body:not(.compact-mode) #playbackView .playback-inspector-tabs button { font-size: 11px; font-weight: 500; }
+body:not(.compact-mode) #playbackView .playback-inspector-tabs button[aria-selected="true"] { background: var(--desk-surface); border-color: transparent; box-shadow: 0 1px 3px #15273b12; }
+body:not(.compact-mode) #playbackView .playback-inspector-tool { padding: 14px; }
+body:not(.compact-mode) #playbackView #playbackTranscriptTool { overflow: hidden; }
+body:not(.compact-mode) #playbackView #transcriptPanel { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+body:not(.compact-mode) #playbackView #transcriptPanel > :not(#transcriptDisplay) { flex-shrink: 0; }
+body:not(.compact-mode) #playbackView #transcriptDisplay { flex: 1; min-height: 0; overflow: hidden; }
+body:not(.compact-mode) #playbackView #speakerCorrectionPanel { max-height: 220px; overflow: auto; }
+body:not(.compact-mode) #playbackView .transcript-heading { display: none; }
+body:not(.compact-mode) #playbackView .quiet-transcript-toolbar { display: flex; flex-wrap: nowrap; align-items: center; gap: 6px; margin: 0 0 12px; padding: 0; border: 0; }
+body:not(.compact-mode) #playbackView .quiet-transcript-toolbar > select { flex: 1; min-width: 0; min-height: 30px; padding: 5px 6px; font-size: 11px; border-radius: 7px; }
+body:not(.compact-mode) #playbackView .quiet-transcript-actions { display: flex; flex: 0 0 auto; gap: 2px; align-items: center; }
+body:not(.compact-mode) #playbackView .transcript-status:empty { display: none; }
+body:not(.compact-mode) #playbackView .quiet-speaker-hidden { display: none !important; }
+body:not(.compact-mode) #playbackView .transcript-search-sticky { position: relative; padding: 0 0 11px; margin: 0; }
+body:not(.compact-mode) #playbackView .transcript-search-row { min-height: 31px; }
+body:not(.compact-mode) #playbackView .transcript-search-row input { font-size: 11px; }
+body:not(.compact-mode) #playbackView .transcript-search-navigation { align-items: center; justify-content: flex-end; padding-top: 4px; gap: 2px; }
+body:not(.compact-mode) #playbackView .transcript-search-count { flex: 1; text-align: left; }
+body:not(.compact-mode) #playbackView .transcript-search-sticky:has(#transcriptSearch:placeholder-shown) .transcript-search-navigation { display: none; }
+body:not(.compact-mode) #playbackView :is(.transcript-raw-view,.transcript-cue-list,.transcript-speaker-list) { height: 100%; min-height: 0; max-height: none; overflow: auto; padding: 1px 2px 1px 0; border: 0; border-radius: 0; background: transparent; font-size: 12px; line-height: 1.85; }
+body:not(.compact-mode) #playbackView .transcript-raw-view p { color: var(--desk-ink); margin: 0; }
+body:not(.compact-mode) #playbackView .transcript-speaker-turn { margin: 0 0 12px; padding: 8px; border-radius: 7px; }
+body:not(.compact-mode) #playbackView .quiet-menu-wrap { position: relative; display: inline-flex; flex: 0 0 auto; margin: 0; }
+body:not(.compact-mode) #playbackView .quiet-icon-button {
+  display: inline-flex; align-items: center; justify-content: center; width: 28px; min-width: 28px;
+  height: 29px; min-height: 29px; padding: 0; margin: 0; border: 1px solid transparent;
+  border-radius: 7px; background: transparent; color: var(--desk-muted); font: inherit;
+  font-size: 19px; line-height: 1; cursor: pointer; box-shadow: none;
+}
+body:not(.compact-mode) #playbackView .quiet-icon-button svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+body:not(.compact-mode) #playbackView .quiet-icon-button:is(:hover,[aria-expanded="true"]):not(:disabled) { color: var(--desk-blue-ink); background: var(--desk-blue); }
+body:not(.compact-mode) #playbackView .quiet-icon-button:disabled { cursor: default; opacity: .38; }
+body:not(.compact-mode) #playbackView .quiet-icon-button:focus-visible { outline: 2px solid var(--desk-blue-ink); outline-offset: 1px; }
+body:not(.compact-mode) #playbackView .recording-options-button { width: 23px; min-width: 23px; height: 25px; min-height: 25px; font-size: 17px; }
+body:not(.compact-mode) #playbackView .quiet-menu {
+  position: fixed; inset: auto; right: auto !important; bottom: auto !important; transform: none; z-index: 16000; display: grid; gap: 2px; width: 218px;
+  min-width: 0; max-width: calc(100vw - 16px); padding: 6px;
+  border: 1px solid var(--desk-line); border-radius: 10px; overflow: auto;
+  background: var(--desk-surface); color: var(--desk-ink);
+  box-shadow: 0 9px 28px #14263822; font-size: 12px;
+}
+body:not(.compact-mode) #playbackView .quiet-menu.hidden { display: none; }
+body:not(.compact-mode) #playbackView .quiet-menu button {
+  display: flex; align-items: center; justify-content: flex-start; gap: 8px;
+  width: 100% !important; min-width: 0 !important; max-width: none !important;
+  min-height: 30px !important; height: auto !important; margin: 0; padding: 6px 9px !important;
+  border: 0 !important; border-radius: 6px !important; color: var(--desk-ink) !important;
+  background: transparent !important; font-size: 11px !important; font-weight: 400;
+  line-height: 1.4; text-align: left; cursor: pointer; box-shadow: none !important;
+  transform: none !important; text-shadow: none;
+}
+body:not(.compact-mode) #playbackView .quiet-menu button:not(:disabled):is(:hover,:focus-visible) { background: var(--desk-blue) !important; color: var(--desk-blue-ink) !important; outline: none; }
+body:not(.compact-mode) #playbackView .quiet-menu button:disabled { opacity: .4; cursor: default; }
+body:not(.compact-mode) #playbackView .quiet-menu .quiet-danger { color: #bd5757 !important; }
+body:not(.compact-mode) #playbackView .quiet-menu hr { border: 0; border-top: 1px solid var(--desk-line); margin: 4px; width: auto; }
+body:not(.compact-mode) #playbackView .quiet-menu svg { width: 15px; height: 15px; fill: none; stroke: currentColor; stroke-width: 1.5; }
+body:not(.compact-mode) #playbackView .quiet-menu-field { display: grid; gap: 5px; padding: 5px 9px; font-size: 10px; color: var(--desk-muted); }
+body:not(.compact-mode) #playbackView .quiet-menu-field select { width: 100%; min-width: 0; max-width: 100%; height: 29px; min-height: 29px; padding: 4px 6px; font-size: 11px; }
+body:not(.compact-mode) #playbackView .quiet-menu .recording-category-select { display: block; }
+body:not(.compact-mode) #playbackView .quiet-menu .playback-folder-pill { display: grid; justify-content: start; gap: 3px; padding: 6px 9px; margin: 0; border: 0; border-radius: 0; background: transparent; font-size: 9px; }
+body:not(.compact-mode) #playbackView .quiet-menu .playback-folder-pill strong { overflow-wrap: anywhere; color: var(--desk-muted); font-size: 10px; font-weight: 500; }
+@media (max-width: 1180px) {
+  body:not(.compact-mode) #playbackView #playbackDetails:not(.hidden) { grid-template-columns: minmax(0,1fr); }
+  body:not(.compact-mode) #playbackView .playback-inspector { max-height: 660px; }
+  body:not(.compact-mode) #playbackView .playback-inspector { height: 520px; }
+  body:not(.compact-mode) #playbackView .playback-inspector-tabs { grid-template-columns: repeat(4,minmax(0,1fr)); }
+}
+@media (max-width: 900px) {
+  body:not(.compact-mode) #playbackView .recording-browser { max-height: none; }
+  body:not(.compact-mode) #playbackView .recording-list { min-height: 0; max-height: 220px; }
+  body:not(.compact-mode) #playbackView .playback-inspector-tool { padding: 15px; }
+}
+@media (max-width: 580px) {
+  body:not(.compact-mode) #mainLayout.playback-mode #workspacePanel { padding: 11px; }
+  body:not(.compact-mode) #playbackView .player-control-row { justify-content: center !important; gap: 7px !important; }
+  body:not(.compact-mode) #playbackView .right-player-controls { margin-left: 0; }
+  body:not(.compact-mode) #playbackView .playback-inspector-tabs { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  body:not(.compact-mode) #playbackView .playback-actions-row .button { padding: 5px 6px; font-size: 10px; }
+}
+
+/* v0.2.142 — quieter Full Record controls and a compact, discoverable library toolbar.
+   These rules deliberately leave the original 262 × 84 Mini controls alone. */
+body:not(.compact-mode) .recording-controls-panel { padding: 15px; }
+body:not(.compact-mode) .recording-controls-title { padding: 0 0 9px; margin-bottom: 10px; }
+body:not(.compact-mode) .recording-controls-title h2 { font-size: 16px; font-weight: 600; }
+body:not(.compact-mode) .recording-controls-title .settings-kicker { font-size: 9px; letter-spacing: .1em; margin-bottom: 3px; }
+body:not(.compact-mode) .recording-controls-panel .readiness-summary { padding: 9px 11px; gap: 8px; }
+body:not(.compact-mode) .recording-controls-panel .readiness-summary strong { font-size: 12px; font-weight: 600; }
+body:not(.compact-mode) .recording-controls-panel .readiness-summary-icon { width: 20px; height: 20px; flex-basis: 20px; font-size: 11px; }
+body:not(.compact-mode) .recording-controls-panel .readiness-card:has(.readiness-summary.ready) { border-color: var(--line); background: color-mix(in srgb, var(--surface-1) 97%, #68b794); }
+body:not(.compact-mode) .recording-controls-panel .record-quick-controls { padding: 9px 10px; gap: 8px; border-radius: 10px; }
+body:not(.compact-mode) .recording-controls-panel .record-quick-heading { margin-bottom: 5px; flex-direction: row; align-items: baseline; gap: 5px; }
+body:not(.compact-mode) .recording-controls-panel .record-quick-heading strong { font-size: 10.5px; font-weight: 550; }
+body:not(.compact-mode) .recording-controls-panel .record-quick-heading span { font-size: 9px; }
+body:not(.compact-mode) .recording-controls-panel .apple-segmented-control { padding: 2px; border-radius: 8px; }
+body:not(.compact-mode) .recording-controls-panel .apple-segment-button { min-height: 29px; padding: 5px 7px; font-size: 10.5px; font-weight: 550; border-radius: 6px; }
+body:not(.compact-mode) .recording-controls-panel .apple-segment-button.is-selected { box-shadow: 0 1px 3px #15273b12; }
+body:not(.compact-mode) .recording-controls-panel .apple-setting-row { min-height: 38px; grid-template-columns: 24px minmax(0,1fr) 34px; gap: 8px; }
+body:not(.compact-mode) .recording-controls-panel .apple-setting-icon { width: 24px; height: 24px; border-radius: 7px; }
+body:not(.compact-mode) .recording-controls-panel .apple-setting-icon svg { width: 14px; height: 14px; }
+body:not(.compact-mode) .recording-controls-panel .apple-setting-copy strong { font-size: 10.5px; font-weight: 550; }
+body:not(.compact-mode) .recording-controls-panel .record-live-audio-check { padding: 9px 10px; gap: 7px; border-radius: 10px; }
+body:not(.compact-mode) .recording-controls-panel .record-live-audio-heading { align-items: baseline; flex-direction: row; gap: 8px; }
+body:not(.compact-mode) .recording-controls-panel .record-live-audio-heading strong { font-size: 10.5px; white-space: nowrap; font-weight: 550; }
+body:not(.compact-mode) .recording-controls-panel .record-live-audio-heading span { font-size: 9px; text-align: right; }
+body:not(.compact-mode) .recording-controls-panel .record-live-audio-state { font-weight: 550; }
+body:not(.compact-mode) .recording-controls-panel .record-ready-summary-line { font-size: 9.5px; font-weight: 500; padding: 6px 8px; border-radius: 8px; background: color-mix(in srgb, var(--surface-1) 91%, #89b7e0); }
+body:not(.compact-mode) .recording-controls-panel .record-destination-line { min-height: 32px; padding: 5px 8px; margin-bottom: 9px; border-radius: 8px; }
+body:not(.compact-mode) .recording-controls-panel .record-destination-copy strong,
+body:not(.compact-mode) .recording-controls-panel .record-destination-change { font-weight: 550; }
+body:not(.compact-mode) .recording-controls-panel .recording-primary-row { grid-template-columns: minmax(0,.85fr) minmax(0,1.15fr); gap: 8px; }
+body:not(.compact-mode) .recording-controls-panel #startButton {
+  min-height: 44px !important; padding: 10px 14px; border: 1px solid #a8cbe5;
+  border-radius: 10px; background: #c9e2f5 !important; color: #285b7d !important;
+  font-size: 13px; font-weight: 600; letter-spacing: -.01em; box-shadow: none !important;
+  transform: none !important; transition: background-color .12s ease;
+}
+body:not(.compact-mode) .recording-controls-panel #startButton:hover:not(:disabled) { background: #bddbf1 !important; }
+body:not(.compact-mode) .recording-controls-panel #startButton:active:not(:disabled) { background: #aed1ed !important; }
+html[data-theme="dark"] body:not(.compact-mode) .recording-controls-panel #startButton { background: #344e66 !important; border-color: #587794; color: #d2eaff !important; }
+html[data-theme="dark"] body:not(.compact-mode) .recording-controls-panel #startButton:hover:not(:disabled) { background: #405d78 !important; }
+body:not(.compact-mode) .recording-controls-panel .recording-duration { min-height: 44px; padding: 7px 9px; }
+body:not(.compact-mode) .recording-controls-panel .shortcut-hint { font-size: 9px; line-height: 1.5; }
+body:not(.compact-mode) #playbackView .playback-splitter { align-self: stretch; min-height: 100%; border-radius: 2px; }
+body:not(.compact-mode) #playbackView .playback-splitter::before { inset: 5px 2px; background: transparent; }
+body:not(.compact-mode) #playbackView .playback-splitter span { top: 5px; bottom: 5px; height: auto; width: 2px; transform: translateX(-50%); background: var(--desk-line); opacity: .85; border-radius: 2px; }
+body:not(.compact-mode) #playbackView .playback-splitter:is(:hover,.dragging,:focus-visible)::before { background: color-mix(in srgb, var(--desk-blue-ink) 15%, transparent); }
+body:not(.compact-mode) #playbackView .playback-splitter:is(:hover,.dragging,:focus-visible) span { background: var(--desk-blue-ink); }
+body:not(.compact-mode) #playbackView .library-filter-toolbar { display: flex; align-items: center; gap: 5px; margin: 8px 0; padding-bottom: 8px; border-bottom: 1px solid var(--desk-line); }
+body:not(.compact-mode) #playbackView .library-filter-toolbar .quiet-media-filter { flex: 1; min-width: 0; margin: 0; }
+body:not(.compact-mode) #playbackView .library-filter-toolbar .quiet-media-filter select { min-height: 29px; padding: 5px 21px 5px 7px; font-size: 10.5px; }
+body:not(.compact-mode) #playbackView .library-refine-button { display: inline-flex; align-items: center; gap: 4px; min-height: 29px; padding: 5px 6px; border: 1px solid transparent; border-radius: 7px; background: transparent; color: var(--desk-muted); font: inherit; font-size: 10px; white-space: nowrap; cursor: pointer; }
+body:not(.compact-mode) #playbackView .library-refine-button svg { width: 13px; height: 13px; fill: none; stroke: currentColor; stroke-width: 1.7; stroke-linecap: round; }
+body:not(.compact-mode) #playbackView .library-refine-button:is(:hover,[aria-expanded="true"],.has-active-filter) { background: var(--desk-blue); color: var(--desk-blue-ink); }
+body:not(.compact-mode) #playbackView .library-refine-button:focus-visible { outline: 2px solid var(--desk-blue-ink); outline-offset: 1px; }
+body:not(.compact-mode) #playbackView .library-refine-menu { width: 244px; }
+body:not(.compact-mode) #playbackView .library-refine-menu .recording-sort-row,
+body:not(.compact-mode) #playbackView .library-refine-menu .recording-filter-label { display: grid; grid-template-columns: 1fr; align-items: start; gap: 5px; margin: 0; padding: 7px 9px; font-size: 10px; }
+body:not(.compact-mode) #playbackView .library-refine-menu .recording-organizer { padding: 0; margin: 0; border: 0; }

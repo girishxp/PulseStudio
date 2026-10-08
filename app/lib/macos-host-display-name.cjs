@@ -1,8 +1,8 @@
 'use strict';
 
-// Dock naming is bundle metadata; app.setName only changes Electron's internal
-// name. Preserve the host's permission identity by editing display strings only,
-// and only when neither the Info.plist nor resources are sealed by its signature.
+// The Dock can use the physical .app folder name even when its metadata and
+// app.setName report the new name. Prepare that name before launch while keeping
+// the original executable, signature, bundle ID and Electron dependency path.
 const fs = require('node:fs');
 const path = require('node:path');
 const crypto = require('node:crypto');
@@ -11,7 +11,9 @@ const { spawnSync } = require('node:child_process');
 const DISPLAY_NAME = 'Pulse Studio';
 const STOCK_ID = 'com.github.Electron';
 const STOCK_EXECUTABLE = 'Electron';
+const BRANDED_BUNDLE = `${DISPLAY_NAME}.app`;
 const ALLOWED_NAMES = new Set(['Electron', DISPLAY_NAME]);
+const REGISTER_TOOL = '/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister';
 
 function run(command, args) {
   const result = spawnSync(command, args, {
@@ -32,8 +34,8 @@ function fingerprint(bundle, executable) {
   const requirements = run('/usr/bin/codesign', ['--display', '--requirements', '-', bundle]);
   return {
     executableSha256: crypto.createHash('sha256').update(fs.readFileSync(executable)).digest('hex'),
-    signingStatus: signing.status, signing: signing.output,
-    requirementsStatus: requirements.status, requirements: requirements.output
+    signingStatus: signing.status, signing: signing.output.replace(/^Executable=.+$/m, 'Executable=<unchanged-host>'),
+    requirementsStatus: requirements.status, requirements: requirements.output.replace(/^Executable=.+$/m, 'Executable=<unchanged-host>')
   };
 }
 
@@ -42,9 +44,85 @@ function sameInfo(before, after) {
   return JSON.stringify(withoutNames(before)) === JSON.stringify(withoutNames(after));
 }
 
-function ensureMacHostDisplayName(appDir, options = {}) {
-  if ((options.platform || process.platform) !== 'darwin') return { state: 'skipped', reason: 'not-macos' };
-  const bundle = path.join(appDir, 'node_modules/electron/dist/Electron.app');
+function refreshMacHostRegistration(bundle) {
+  // A ZIP extraction can retain an older bundle directory modification date.
+  // Replacing Info.plist alone does not force Launch Services (and the Dock)
+  // to refresh that already-registered path. Update this host only; never reset
+  // the user's database, restart the Dock, or alter any bundle/code identity.
+  const refreshed = run(REGISTER_TOOL, ['-f', bundle]);
+  return refreshed.status === 0
+    ? { state: 'refreshed' }
+    : { state: 'unavailable', reason: refreshed.error ? 'registration-tool-unavailable' : 'registration-refresh-failed' };
+}
+
+function bundlePaths(appDir) {
+  const directory = path.resolve(appDir, 'node_modules/electron/dist');
+  return { stock: path.join(directory, 'Electron.app'), branded: path.join(directory, BRANDED_BUNDLE) };
+}
+
+function existingBundle(appDir) {
+  const paths = bundlePaths(appDir);
+  if (fs.existsSync(paths.stock)) {
+    const entry = fs.lstatSync(paths.stock);
+    if (!entry.isSymbolicLink()) return { ...paths, bundle: paths.stock };
+    // A compatibility link must point only at the physical sibling we manage.
+    if (fs.realpathSync(paths.stock) !== paths.branded || !fs.lstatSync(paths.branded).isDirectory()) return { ...paths, reason: 'non-stock-path' };
+    return { ...paths, bundle: paths.branded };
+  }
+  if (fs.existsSync(paths.branded) && fs.lstatSync(paths.branded).isDirectory()) return { ...paths, bundle: paths.branded };
+  return { ...paths, reason: 'host-unavailable' };
+}
+
+function getMacHostBundlePath(appDir) {
+  try { return existingBundle(appDir).bundle || bundlePaths(appDir).stock; }
+  catch { return bundlePaths(appDir).stock; }
+}
+
+function stockHostIsRunning(bundle) {
+  // This reads running-application metadata, not UI or the permission database.
+  // Defer on an unavailable check rather than move a live Electron host.
+  const script = 'ObjC.import("AppKit"); function run(argv) { const apps = $.NSRunningApplication.runningApplicationsWithBundleIdentifier("com.github.Electron"); const paths=[]; for(let i=0;i<apps.count;i++){const a=apps.objectAtIndex(i);if(a.bundleURL)paths.push(ObjC.unwrap(a.bundleURL.path));} return JSON.stringify(paths); }';
+  const result = spawnSync('/usr/bin/osascript', ['-l', 'JavaScript', '-e', script], { encoding: 'utf8', timeout: 5000, maxBuffer: 1024 * 1024 });
+  if (result.status !== 0) return { available: false };
+  try {
+    const paths = JSON.parse(result.stdout);
+    if (!Array.isArray(paths) || !paths.every(value => typeof value === 'string')) return { available: false };
+    const target = path.resolve(bundle);
+    return { available: true, running: paths.some(value => path.resolve(value) === target) || path.resolve(process.execPath).startsWith(`${target}${path.sep}`) };
+  } catch { return { available: false }; }
+}
+
+function preparePhysicalBundle(location) {
+  const { bundle, stock, branded } = location;
+  if (bundle === branded) {
+    // Repair an interrupted migration's missing compatibility link only.
+    if (!fs.existsSync(stock)) fs.symlinkSync(BRANDED_BUNDLE, stock, 'dir');
+    return { bundlePath: branded, compatibilityPath: stock, bundleState: 'branded' };
+  }
+  if (fs.existsSync(branded)) return { bundlePath: stock, bundleState: 'deferred', bundleReason: 'branded-path-conflict' };
+  const active = stockHostIsRunning(stock);
+  if (!active.available || active.running) return { bundlePath: stock, bundleState: 'deferred', bundleReason: active.available ? 'host-running' : 'active-host-check-unavailable' };
+  const before = fingerprint(stock, path.join(stock, 'Contents/MacOS', STOCK_EXECUTABLE));
+  const beforeInfo = readInfo(path.join(stock, 'Contents/Info.plist'));
+  let renamed = false;
+  try {
+    fs.renameSync(stock, branded);
+    renamed = true;
+    fs.symlinkSync(BRANDED_BUNDLE, stock, 'dir');
+    const after = fingerprint(branded, path.join(branded, 'Contents/MacOS', STOCK_EXECUTABLE));
+    const afterInfo = readInfo(path.join(branded, 'Contents/Info.plist'));
+    if (JSON.stringify(before) !== JSON.stringify(after) || JSON.stringify(beforeInfo) !== JSON.stringify(afterInfo) || fs.realpathSync(stock) !== branded) throw new Error('Host identity changed during folder preparation.');
+    return { bundlePath: branded, compatibilityPath: stock, bundleState: 'renamed', executableSha256: before.executableSha256 };
+  } catch (error) {
+    if (renamed) {
+      try { if (fs.lstatSync(stock).isSymbolicLink() && fs.readlinkSync(stock) === BRANDED_BUNDLE) fs.unlinkSync(stock); } catch {}
+      try { if (!fs.existsSync(stock)) fs.renameSync(branded, stock); } catch {}
+    }
+    return { bundlePath: fs.existsSync(stock) ? stock : branded, bundleState: 'deferred', bundleReason: 'bundle-preparation-unavailable', error: String(error?.message || error) };
+  }
+}
+
+function ensureBundleDisplayNames(bundle) {
   const infoFile = path.join(bundle, 'Contents/Info.plist');
   const executable = path.join(bundle, 'Contents/MacOS', STOCK_EXECUTABLE);
   let temporaryFile;
@@ -90,4 +168,22 @@ function ensureMacHostDisplayName(appDir, options = {}) {
   }
 }
 
-module.exports = { DISPLAY_NAME, ensureMacHostDisplayName };
+function ensureMacHostDisplayName(appDir, options = {}) {
+  if ((options.platform || process.platform) !== 'darwin') return { state: 'skipped', reason: 'not-macos' };
+  try {
+    const location = existingBundle(appDir);
+    if (!location.bundle) return { state: 'skipped', reason: location.reason };
+    const result = ensureBundleDisplayNames(location.bundle);
+    if (result.state === 'skipped') return { ...result, bundlePath: location.bundle };
+    // Main-process startup deliberately does not move its running .app folder.
+    // Only the prelaunch dependency helper opts into the filesystem migration.
+    const prepared = options.prepareBundle === true
+      ? preparePhysicalBundle(location)
+      : { bundlePath: location.bundle, bundleState: location.bundle === location.branded ? 'branded' : 'stock' };
+    return { ...result, ...prepared, registration: refreshMacHostRegistration(prepared.bundlePath) };
+  } catch (error) {
+    return { state: 'skipped', reason: 'branding-unavailable', error: String(error?.message || error) };
+  }
+}
+
+module.exports = { DISPLAY_NAME, ensureMacHostDisplayName, getMacHostBundlePath };

@@ -5,12 +5,16 @@ const appDir = __dirname;
 function updateMacDisplayName() {
   if (process.platform !== 'darwin') return;
   try {
-    const result = require('./lib/macos-host-display-name.cjs').ensureMacHostDisplayName(appDir);
-    if (result.state === 'updated') console.error('PulseStudio: prepared the Pulse Studio Dock name; host code identity is unchanged.');
+    const result = require('./lib/macos-host-display-name.cjs').ensureMacHostDisplayName(appDir, { prepareBundle: true });
+    if (result.state === 'updated' || result.bundleState === 'renamed') console.error('PulseStudio: prepared the Pulse Studio Dock name; host code identity is unchanged.');
+    else if (result.bundleReason === 'host-running') console.error('PulseStudio: the Dock name will finish updating after the current app is closed and reopened.');
     else if (result.error) console.error('PulseStudio: Dock name was left unchanged; the existing desktop runtime will still launch.');
   } catch {
     // Display branding is optional. It must not invalidate prepared dependencies.
   }
+}
+function macHostPath() {
+  return require('./lib/macos-host-display-name.cjs').getMacHostBundlePath(appDir);
 }
 function signature(pkg, platform = process.platform, arch = process.arch) {
   return crypto.createHash('sha256').update(JSON.stringify({ dependencies: pkg.dependencies || {}, devDependencies: pkg.devDependencies || {}, platform, arch })).digest('hex');
@@ -29,7 +33,7 @@ function check(pkg) {
       if (host.platform !== process.platform || host.arch !== process.arch) return false;
     }
     if (process.platform === 'darwin') {
-      for (const file of [path.join(modules, 'electron/dist/Electron.app/Contents/MacOS/Electron'), path.join(modules, 'ffmpeg-static/ffmpeg')]) {
+      for (const file of [path.join(macHostPath(), 'Contents/MacOS/Electron'), path.join(modules, 'ffmpeg-static/ffmpeg')]) {
         if (!fs.existsSync(file)) return false;
         const arch = process.arch === 'x64' ? 'x86_64' : process.arch;
         if (spawnSync('/usr/bin/lipo', ['-verify_arch', arch, file], { stdio: 'ignore', timeout: 5000 }).status !== 0) return false;
@@ -50,6 +54,7 @@ if (require.main === module) {
   if (process.argv[2] === 'signature') process.stdout.write(signature(pkg));
   else if (process.argv[2] === 'check') process.exitCode = check(pkg) ? 0 : 1;
   else if (process.argv[2] === 'stamp') stamp(pkg);
+  else if (process.argv[2] === 'host-path') process.stdout.write(macHostPath());
   else process.exitCode = 2;
 }
 module.exports = { signature, check, stamp };

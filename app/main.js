@@ -4,6 +4,15 @@ const path = require('path');
 const os = require('os');
 const { pathToFileURL } = require('url');
 const { spawn } = require('child_process');
+// An older updater may reopen the stock host after installing this version.
+// Hand it to the private Node worker before any recorder/recovery startup; that
+// worker waits for this process to quit before preparing and opening its name.
+if (process.platform === 'darwin' && !app.isPackaged) {
+  try {
+    const handoff = require('./lib/macos-host-startup-handoff.cjs').startPortableMacHostHandoff(__dirname);
+    if (handoff.started) { app.quit(); return; }
+  } catch {}
+}
 const { AsyncLocalStorage } = require('async_hooks');
 const { Readable } = require('stream');
 const ffmpegPath = require('ffmpeg-static');
@@ -23,6 +32,7 @@ const { AnalyticsManager } = require('./lib/analytics-manager');
 const { WindowTooltip } = require('./lib/window-tooltip');
 const { AudioSourceManager } = require('./lib/audio-sources');
 const recordingFolderPolicy = require('./lib/recording-folder-policy');
+const { createRecordingIconController } = require('./lib/recording-icon.cjs');
 let nativeMacWindowControls = null;
 let nativeMiniWindowControlsAvailable = false;
 if (process.platform === 'darwin') {
@@ -30,14 +40,16 @@ if (process.platform === 'darwin') {
   catch (error) { console.warn('Native Mini window controls unavailable; using the existing compact controls:', error?.message || error); }
 }
 
-const APP_DISPLAY_NAME = 'PulseStudio';
+const APP_DISPLAY_NAME = 'Pulse Studio';
 const APP_USER_MODEL_ID = 'com.girishxp.pulsestudio';
 const APP_ICON_PATH = path.join(__dirname, 'assets', 'pulsestudio-icon.png');
+const recordingIconController = createRecordingIconController({ app, nativeImage, assetsDirectory: path.join(__dirname, 'assets'), platform: process.platform });
 // v0.2.123 diagnostic isolation: My Voice highlighting is fully disabled.
 // Keep the implementation available for a later controlled re-enable, but do not
 // analyze, refine, persist, or expose highlight segments in this build.
 const MY_VOICE_HIGHLIGHTS_ENABLED = false;
-const APP_USER_DATA_PATH = path.join(app.getPath('appData'), APP_DISPLAY_NAME);
+// Keep the existing settings, recovery and model-cache directory across display-name changes.
+const APP_USER_DATA_PATH = path.join(app.getPath('appData'), 'PulseStudio');
 try { app.setPath('userData', APP_USER_DATA_PATH); } catch {}
 let analyticsManager = null;
 const activityLogger = new ActivityLogger({
@@ -86,6 +98,11 @@ if (process.platform === 'darwin' && !app.isPackaged) {
 // Application identity: keep the visible UI branded as PulseStudio. Packaged
 // builds use the native PulseStudio identity; the local macOS ZIP runs inside
 // Electron's stable signed host but still applies the PulseStudio name/icon.
+// Direct updater reopens bypass the launcher, so refresh this exact host's
+// display-name registration here too. Branding never blocks app startup.
+if (process.platform === 'darwin' && !app.isPackaged) {
+  try { require('./lib/macos-host-display-name.cjs').ensureMacHostDisplayName(__dirname); } catch {}
+}
 try { app.setName(APP_DISPLAY_NAME); } catch {}
 try { process.title = APP_DISPLAY_NAME; } catch {}
 
@@ -95,12 +112,7 @@ function applyApplicationIdentity() {
   if (process.platform === 'win32') {
     try { app.setAppUserModelId(APP_USER_MODEL_ID); } catch {}
   }
-  if (process.platform === 'darwin' && app.dock && fs.existsSync(APP_ICON_PATH)) {
-    try {
-      const icon = nativeImage.createFromPath(APP_ICON_PATH);
-      if (!icon.isEmpty()) app.dock.setIcon(icon);
-    } catch {}
-  }
+  recordingIconController.applyCurrentState();
 }
 
 protocol.registerSchemesAsPrivileged([
@@ -2887,6 +2899,8 @@ function preserveActiveRecordingForRecovery(reason, extra = {}) {
 
 
 async function sealActiveRecordingForFinalization(meta = {}) {
+  // Capture has stopped before this IPC call; save-time AI priority is independent.
+  recordingIconController.setRecording(false);
   await closeActiveStream();
   await closeActiveMicStream();
   await closeActiveNeuralMicStream();
@@ -2972,6 +2986,14 @@ async function finalizeSealedRecordingInternal(sessionId) {
   const requestedVideoCodec = normalizeVideoCodec(meta.videoCodec || 'h264');
   let videoCodec = requestedVideoCodec;
   const runtimeMarkers = normalizeMarkers(meta.markers || []);
+  const saveStartedAt = Date.now();
+  let saveStageStartedAt = saveStartedAt;
+  const saveStages = { containerMs: 0, applicationAudioMs: 0, sourceRetentionMs: 0, microphoneMixMs: 0, validationMs: 0, metadataAndCleanupMs: 0 };
+  const markSaveStage = (name) => {
+    const now = Date.now();
+    saveStages[name] = (saveStages[name] || 0) + Math.max(0, now - saveStageStartedAt);
+    saveStageStartedAt = now;
+  };
 
   try {
     throwIfFinalizationCancelled(key);
@@ -3009,8 +3031,10 @@ async function finalizeSealedRecordingInternal(sessionId) {
       meta.videoEncoding = await transcodeToMp4(sealed.tempPath, outputPath, requestedVideoCodec);
     }
     throwIfFinalizationCancelled(key);
+    markSaveStage('containerMs');
     if (meta.applicationAudioPath) await mergeApplicationAudio(outputPath, meta.applicationAudioPath, kind, false);
     throwIfFinalizationCancelled(key);
+    markSaveStage('applicationAudioMs');
     if (MY_VOICE_HIGHLIGHTS_ENABLED && sealed.microphonePath && fs.existsSync(sealed.microphonePath) && fs.statSync(sealed.microphonePath).size >= 128 && Array.isArray(meta.voiceHighlights) && meta.voiceHighlights.length) {
       try {
         const { refineVoiceHighlightsAgainstReference } = require('./lib/voice-highlights');
@@ -3048,6 +3072,7 @@ async function finalizeSealedRecordingInternal(sessionId) {
         if (error?.code === 'FINALIZATION_CANCELLED') throw error;
         activityLog('warn', 'audio.sources-preserve-failed', { error });
       }
+      markSaveStage('sourceRetentionMs');
       meta.microphoneCleanup = await postProcessAndMixMicrophone(
         outputPath,
         sealed.microphonePath,
@@ -3062,8 +3087,10 @@ async function finalizeSealedRecordingInternal(sessionId) {
       );
     }
     throwIfFinalizationCancelled(key);
+    markSaveStage('microphoneMixMs');
     if (!fs.existsSync(outputPath) || fs.statSync(outputPath).size < 1024) throw new Error('Final output validation failed: saved file is empty or missing.');
     if (kind === 'video') await validatePlayableVideoFile(outputPath);
+    markSaveStage('validationMs');
     if (runtimeMarkers.length) {
       const savedMarkers = saveMarkersForRecording(outputPath, runtimeMarkers);
       meta.markerCount = savedMarkers.length;
@@ -3086,6 +3113,14 @@ async function finalizeSealedRecordingInternal(sessionId) {
     if (sealed.microphonePath) { try { if (fs.existsSync(sealed.microphonePath)) fs.unlinkSync(sealed.microphonePath); } catch {} }
     if (sealed.neuralMicrophonePath) { try { if (fs.existsSync(sealed.neuralMicrophonePath)) fs.unlinkSync(sealed.neuralMicrophonePath); } catch {} }
   } catch (error) {
+    activityLog('warn', 'recording.save-performance', {
+      complete: false,
+      recordingKind: kind,
+      captureDurationMs: Math.max(0, Number(meta.durationMs) || 0),
+      totalMs: Math.max(0, Date.now() - saveStartedAt),
+      stages: saveStages,
+      unfinishedStageMs: Math.max(0, Date.now() - saveStageStartedAt)
+    });
     let partialOutputPath = null;
     try {
       if (fs.existsSync(outputPath) && fs.statSync(outputPath).size > 0) {
@@ -3119,6 +3154,13 @@ async function finalizeSealedRecordingInternal(sessionId) {
   if (sealed.pendingManifestPath) { try { fs.unlinkSync(sealed.pendingManifestPath); } catch {} }
   sealedRecordingSessions.delete(key);
   releaseReservedRecordingPath(outputPath);
+  markSaveStage('metadataAndCleanupMs');
+  const savePerformance = {
+    captureDurationMs: Math.max(0, Number(meta.durationMs) || 0),
+    totalMs: Math.max(0, Date.now() - saveStartedAt),
+    stages: saveStages
+  };
+  activityLog('info', 'recording.save-performance', { complete: true, recordingKind: kind, sourceMimeType: sealed.mimeType || '', ...savePerformance });
 
   // Transcription belongs to the saved recording, not to Playback UI selection.
   // Queue it from the main process as soon as the recording is finalized. The AI
@@ -3137,6 +3179,7 @@ async function finalizeSealedRecordingInternal(sessionId) {
     outputPath,
     finalizedAt: new Date().toISOString(),
     microphoneCleanup: meta.microphoneCleanup || null,
+    savePerformance,
     markerCount: Number(meta.markerCount) || 0,
     voiceHighlightCount: Number(meta.voiceHighlightCount) || 0,
     videoEncoding: meta.videoEncoding || null
@@ -3153,6 +3196,7 @@ async function finalizeSealedRecordingInternal(sessionId) {
     videoCodecFallback: meta.videoCodecFallback || null,
     videoEncoding: meta.videoEncoding || null,
     microphoneCleanup: meta.microphoneCleanup || null,
+    savePerformance,
     markerCount: Number(meta.markerCount) || 0,
     voiceHighlightCount: Number(meta.voiceHighlightCount) || 0
   };
@@ -3267,10 +3311,17 @@ async function fileHasAudioStream(filePath) {
   const executable = safeFfmpegPath();
   if (!executable || !fs.existsSync(executable)) return false;
   try {
-    const result = await runProcess(executable, ['-hide_banner', '-i', filePath, '-map', '0:a:0?', '-f', 'null', '-']);
-    return /Audio:/i.test(result.stderr || '');
+    // Audio presence is input metadata. The old null-output probe decoded the
+    // entire recording, twice during a normal microphone save. A zero-duration
+    // stream-copy output reads the header and ends without decoding media frames.
+    // Let FFmpeg choose an output stream so a valid video-only file also exits 0.
+    const result = await runProcess(executable, ['-hide_banner', '-i', filePath, '-t', '0', '-c', 'copy', '-f', 'null', '-']);
+    return /(?:^|\n)\s*Stream #[^\r\n]*:\s*Audio:/i.test(result.stderr || '');
   } catch (error) {
-    return /Audio:/i.test(String(error.message || ''));
+    // Cancellation must reach the owner; treating it as "no audio" could otherwise
+    // discard the protected computer reference or restart a cancelled mix.
+    if (['FINALIZATION_CANCELLED', 'RECOVERY_CANCELLED', 'RECORDING_PROCESSING_CANCELLED'].includes(error?.code)) throw error;
+    return /(?:^|\n)\s*Stream #[^\r\n]*:\s*Audio:/i.test(String(error.message || ''));
   }
 }
 
@@ -5346,6 +5397,7 @@ app.on('window-all-closed', () => {
 });
 
 app.on('before-quit', () => {
+  recordingIconController.setRecording(false);
   windowTooltip.dispose();
   appIsQuitting = true;
   if (mainWindow && !mainWindow.isDestroyed()) {
@@ -5797,6 +5849,7 @@ ipcMain.handle('voice:enroll', (_event, payload = {}) => enrollVoiceProfileFromP
 ipcMain.handle('voice:clear', () => clearVoiceProfile());
 
 ipcMain.handle('recording:begin-file', async (_event, payload = {}) => {
+  recordingIconController.setRecording(false);
   // A new capture always has priority over recovery. Previous-session recovery has
   // already been detached into a pending manifest, so stopping its FFmpeg work here
   // cannot overwrite or lose the protected source.
@@ -5859,6 +5912,7 @@ ipcMain.handle('recording:begin-file', async (_event, payload = {}) => {
   getRecoveryJournalManager().begin({ createdAt: Date.now(), status: 'recording' });
   lastRecordingChunkLogAt = Date.now();
   setRecordingResourcePriority(true, 'recording-file-opened');
+  recordingIconController.setRecording(true);
   activityLog('info', 'recording.begin', {
     tempFile: path.basename(activeTempPath || ''),
     mimeType: activeMimeType,
@@ -5912,6 +5966,7 @@ ipcMain.handle('recording:neural-mic-chunk', async (_event, data) => {
 });
 
 ipcMain.handle('recording:cancel', async () => {
+  recordingIconController.setRecording(false);
   await closeActiveStream();
   await closeActiveMicStream();
   await closeActiveNeuralMicStream();
@@ -5939,6 +5994,7 @@ ipcMain.handle('recording:seal', async (_event, meta = {}) => {
     activityLog('info', 'recording.sealed', { sessionId: result.sessionId, outputFile: path.basename(result.outputPath || ''), durationMs: result.durationMs });
     return result;
   } catch (error) {
+    recordingIconController.setRecording(false);
     setRecordingResourcePriority(false, 'recording-seal-failed');
     activityLog('error', 'recording.seal-failed', { error, meta });
     throw error;

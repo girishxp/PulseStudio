@@ -2,6 +2,7 @@
 set -euo pipefail
 
 # PulseStudio one-click GitHub publisher for macOS.
+# Publisher 1.1.0: verify only the release account and repository on GitHub.com.
 # Override these defaults if needed:
 #   PULSESTUDIO_REPO="$HOME/Developer/PulseStudio"
 #   PULSESTUDIO_GITHUB_REPO="girishxp/PulseStudio"
@@ -9,6 +10,8 @@ set -euo pipefail
 REPO_DIR="${PULSESTUDIO_REPO:-$HOME/Developer/PulseStudio}"
 GITHUB_REPO="${PULSESTUDIO_GITHUB_REPO:-girishxp/PulseStudio}"
 EXPECTED_BRANCH="main"
+CHECK_ONLY=0
+ZIP_PATH=""
 TMP_DIR=""
 CHANGES_APPLIED=0
 COMMIT_CREATED=0
@@ -47,11 +50,74 @@ need_command() {
   command -v "$1" >/dev/null 2>&1 || fail "Required command '$1' was not found. $2"
 }
 
+github_cli() {
+  # Other saved hosts and GH_HOST must not redirect PulseStudio releases.
+  # Keep the user's configured token/account; never switch credentials silently.
+  GH_HOST=github.com command gh "$@"
+}
+
+verify_github_access() {
+  local login_result access_result
+  # 'gh auth status' checks ALL saved accounts/hosts, including unrelated
+  # enterprise accounts. Verify the actual account used for this release instead.
+  # Capture diagnostics privately: never print token values or HTTP debug logs.
+  if ! login_result="$(github_cli api --hostname github.com --method GET user --jq '.login' 2>&1)"; then
+    case "$login_result" in
+      *"HTTP 401"*|*"Bad credentials"*|*"not logged"*|*"gh auth login"*)
+        if [ -n "${GH_TOKEN:-}" ] || [ -n "${GITHUB_TOKEN:-}" ]; then
+          fail "GitHub rejected the GH_TOKEN/GITHUB_TOKEN environment token. It overrides your saved browser login. Remove or refresh that environment setting, then run this publisher again."
+        fi
+        fail "The active GitHub.com login could not be verified. Run 'gh auth login --hostname github.com' once, then try again."
+        ;;
+      *)
+        fail "Could not connect to GitHub.com to verify your login. Check your internet connection, VPN/proxy and GitHub availability, then try again. This is not a request to log in again."
+        ;;
+    esac
+  fi
+  [[ "$login_result" =~ ^[A-Za-z0-9][A-Za-z0-9-]*$ ]] || fail "GitHub.com returned an unexpected account response. Access was not verified; nothing will be published."
+  GITHUB_LOGIN="$login_result"
+
+  if ! access_result="$(github_cli api --hostname github.com --method GET "repos/$GITHUB_REPO" --jq '.permissions.push' 2>&1)"; then
+    case "$access_result" in
+      *"HTTP 404"*|*"Not Found"*)
+        fail "GitHub.com login succeeded as $GITHUB_LOGIN, but repository $GITHUB_REPO was not found or this account cannot access it. Check the repository name and account permissions."
+        ;;
+      *"HTTP 403"*|*"HTTP 401"*|*"Bad credentials"*)
+        fail "GitHub.com login succeeded as $GITHUB_LOGIN, but GitHub denied repository access to $GITHUB_REPO. Check repository permissions and token access."
+        ;;
+      *)
+        fail "GitHub.com login succeeded as $GITHUB_LOGIN, but repository access could not be checked. Check your network/VPN connection and try again."
+        ;;
+    esac
+  fi
+  [ "$access_result" = true ] || fail "GitHub.com login succeeded as $GITHUB_LOGIN, but write/push permission for $GITHUB_REPO was not verified. Use an account/token with permission to publish this repository."
+  say "GitHub.com login verified: $GITHUB_LOGIN"
+  say "Repository write access verified: $GITHUB_REPO"
+}
+
 latest_download_zip() {
   # The ls call is intentional here: the build filenames contain no spaces and
   # this gives us the most recently modified matching PulseStudio ZIP.
   ls -t "$HOME"/Downloads/PulseStudio-cross-platform-v*.zip 2>/dev/null | head -n 1 || true
 }
+
+for ARG in "$@"; do
+  case "$ARG" in
+    --check-only|--check) CHECK_ONLY=1 ;;
+    --help|-h)
+      say "Usage: Publish PulseStudio.command [--check-only] [PulseStudio-cross-platform-vX.Y.Z.zip]"
+      say "Double-click to publish, with confirmation before pushing."
+      say "--check-only verifies GitHub.com login and repository access without changing files or publishing."
+      exit 0
+      ;;
+    --*) fail "Unknown option: $ARG. Use --help for usage." ;;
+    *)
+      [ -z "$ZIP_PATH" ] || fail "Supply only one PulseStudio build ZIP."
+      ZIP_PATH="$ARG"
+      ;;
+  esac
+done
+[[ "$GITHUB_REPO" =~ ^[A-Za-z0-9][A-Za-z0-9-]*/[A-Za-z0-9._-]+$ ]] || fail "PULSESTUDIO_GITHUB_REPO must be an owner/repository name on GitHub.com."
 
 say ""
 say "============================================================"
@@ -59,17 +125,19 @@ say "                 PulseStudio Publisher"
 say "============================================================"
 say ""
 
+need_command gh "Install GitHub CLI once with: brew install gh  then run: gh auth login"
+verify_github_access
+if [ "$CHECK_ONLY" -eq 1 ]; then
+  say ""
+  say "Checks passed. No repository files were changed and nothing was published."
+  exit 0
+fi
+
 need_command git "Install Apple's command-line tools with: xcode-select --install"
 need_command unzip "macOS normally includes unzip."
 need_command rsync "macOS normally includes rsync."
-need_command gh "Install GitHub CLI once with: brew install gh  then run: gh auth login"
 need_command shasum "macOS normally includes shasum."
 
-if ! gh auth status >/dev/null 2>&1; then
-  fail "GitHub CLI is not authenticated. Run 'gh auth login' once, then double-click this publisher again."
-fi
-
-ZIP_PATH="${1:-}"
 if [ -z "$ZIP_PATH" ]; then
   PUBLISHER_DIR="$(cd "$(dirname "$0")" && pwd)"
   ZIP_PATH="$(ls -t "$PUBLISHER_DIR"/PulseStudio-cross-platform-v*.zip 2>/dev/null | head -n 1 || true)"
@@ -111,11 +179,11 @@ say "Checking GitHub and syncing main..."
 git -C "$REPO_DIR" fetch origin "$EXPECTED_BRANCH" --tags --quiet
 git -C "$REPO_DIR" pull --ff-only origin "$EXPECTED_BRANCH" --quiet
 
-if git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+if git -C "$REPO_DIR" ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
   fail "Tag $TAG already exists on GitHub. Refusing to overwrite an existing release version."
 fi
 
-if gh release view "$TAG" -R "$GITHUB_REPO" >/dev/null 2>&1; then
+if github_cli release view "$TAG" -R "$GITHUB_REPO" >/dev/null 2>&1; then
   fail "GitHub Release $TAG already exists. Refusing to overwrite it."
 fi
 
@@ -218,7 +286,7 @@ SHA-256: \`$SHA256\`
 NOTES
 
 say "Creating GitHub release and uploading the build..."
-if ! gh release create "$TAG" "$ZIP_PATH" \
+if ! github_cli release create "$TAG" "$ZIP_PATH" \
   -R "$GITHUB_REPO" \
   --target "$EXPECTED_BRANCH" \
   --title "PulseStudio v$VERSION" \
@@ -232,8 +300,8 @@ if ! gh release create "$TAG" "$ZIP_PATH" \
   exit 1
 fi
 
-RELEASE_URL="$(gh release view "$TAG" -R "$GITHUB_REPO" --json url --jq '.url' 2>/dev/null || true)"
-IS_LATEST="$(gh release view "$TAG" -R "$GITHUB_REPO" --json isLatest --jq '.isLatest' 2>/dev/null || true)"
+RELEASE_URL="$(github_cli release view "$TAG" -R "$GITHUB_REPO" --json url --jq '.url' 2>/dev/null || true)"
+IS_LATEST="$(github_cli release view "$TAG" -R "$GITHUB_REPO" --json isLatest --jq '.isLatest' 2>/dev/null || true)"
 
 say ""
 say "============================================================"

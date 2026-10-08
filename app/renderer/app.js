@@ -358,6 +358,8 @@ const state = {
   pauseStartedAt: 0,
   writeQueue: Promise.resolve(),
   savedPath: null,
+  savedRecordingKind: null,
+  recordingGeneration: 0,
   recordingsDirectory: '',
   recordings: [],
   categories: [],
@@ -1586,6 +1588,7 @@ async function applyViewMode(mode, resizeWindow = true) {
   await applyTransparency(state.transparencyPercent, false);
   try { await window.recorderAPI.setAlwaysOnTop(compact && state.alwaysOnTop); } catch {}
   renderCompactAiStatus();
+  renderSavedRecordingResult();
   if (compact) { installCompactFitObserver(); scheduleCompactWindowFit(); }
 }
 
@@ -1954,7 +1957,7 @@ function setWorkspace(name) {
     });
     refreshRecordings();
   } else {
-    if (state.savedPath && !state.mediaRecorder) $('resultPanel').classList.remove('hidden');
+    renderSavedRecordingResult();
     if (!state.mediaRecorder || state.mediaRecorder.state === 'inactive') refreshPreflightMicMonitor();
   }
 }
@@ -2706,6 +2709,10 @@ function applyTranscriptViewUi() {
     button.classList.toggle('active', active);
     button.setAttribute('aria-pressed', String(active));
   });
+  if ($('transcriptViewSelect')) $('transcriptViewSelect').value = state.transcriptView;
+  // Corrections belong to the speaker view so the raw transcript starts with text.
+  $('speakerCorrectionPanel')?.classList.toggle('quiet-speaker-hidden', state.transcriptView !== 'speakers');
+  $('speakerDetectionStatus')?.classList.toggle('quiet-speaker-hidden', state.transcriptView !== 'speakers');
 }
 
 function setTranscriptView(view, persist = true) {
@@ -3190,7 +3197,7 @@ function openBookmarkInlineEditor(marker = null) {
       if (!activeEditor || activeEditor.classList.contains('hidden') || state.bookmarkDialogMarkerId) return;
       if (String(activeInput?.value || '').trim()) return;
       void saveBookmarkInlineEditor();
-    }, 2000);
+    }, 3000);
   }
   requestAnimationFrame(() => { input.focus(); input.select(); });
 }
@@ -3469,6 +3476,15 @@ function recordingMatchesQuickFilter(recording) {
 }
 
 function updateQuickFilterUi() {
+  const refineButton = $('libraryRefineButton');
+  if (refineButton) {
+    const category = state.categoryFilter && state.categoryFilter !== '__all__' ? state.categoryFilter : '';
+    const sortText = $('librarySort')?.selectedOptions?.[0]?.textContent || 'Date · newest first';
+    const detail = `${sortText} · ${category || 'All categories'}`;
+    refineButton.classList.toggle('has-active-filter', Boolean(category));
+    refineButton.setAttribute('aria-label', `Sort and filter recordings: ${detail}`);
+    refineButton.dataset.fastTooltipTitle = detail;
+  }
   const counts = {
     all: state.recordings.length,
     video: state.recordings.filter((item) => item.mediaType === 'video').length,
@@ -3484,6 +3500,12 @@ function updateQuickFilterUi() {
   for (const [id, value] of Object.entries(countTargets)) {
     const el = $(id);
     if (el) el.textContent = String(value);
+  }
+  const mediaFilter = $('libraryMediaFilter');
+  if (mediaFilter) {
+    const labels = { all: 'All recordings', video: 'Video', audio: 'Audio', favorites: 'Favorites' };
+    for (const option of mediaFilter.options) option.textContent = `${labels[option.value]} · ${counts[option.value]}`;
+    mediaFilter.value = state.libraryQuickFilter || 'all';
   }
   document.querySelectorAll('[data-library-filter]').forEach((button) => {
     const active = button.dataset.libraryFilter === state.libraryQuickFilter;
@@ -3562,6 +3584,7 @@ async function deleteSelectedRecordings() {
     const failedPaths = new Set(failed.map((item) => item.path).filter(Boolean));
     for (const deletedPath of selectedPaths) {
       if (!failedPaths.has(deletedPath)) {
+        if (state.savedPath === deletedPath) clearSavedRecordingResult();
         state.favoriteRecordingPaths.delete(deletedPath);
         state.transcribingPaths.delete(deletedPath);
       }
@@ -3594,6 +3617,7 @@ function recordingItemMarkup(recording) {
   const favorite = state.favoriteRecordingPaths.has(recording.path);
   const dateGroup = recordingDateGroup(recording.modifiedMs);
   const mediaLabel = recording.mediaType === 'audio' ? 'Audio recording' : 'Video recording';
+  const actionMenuId = `recordingActions${state.recordings.indexOf(recording)}`;
   return `
     <div class="recording-item ${recording.path === state.selectedPlaybackPath ? 'active' : ''} ${state.batchSelectionMode ? 'batch-mode' : ''} ${batchSelected ? 'batch-selected' : ''}" data-recording-path="${escapeHtml(recording.path)}">
       <div class="recording-item-line">
@@ -3605,9 +3629,15 @@ function recordingItemMarkup(recording) {
           </span>
         </button>
         <button class="recording-favorite-button ${favorite ? 'active' : ''}" type="button" aria-label="${favorite ? 'Remove' : 'Add'} ${escapeHtml(recording.name)} ${favorite ? 'from' : 'to'} Favorites" aria-pressed="${favorite}">${favorite ? '★' : '☆'}</button>
-        <button class="recording-rename-button" type="button" ${isBusy ? 'disabled' : ''} aria-label="Rename ${escapeHtml(recording.name)}">✎</button>
-        <button class="recording-delete-button" type="button" aria-label="Move ${escapeHtml(recording.name)} to Trash">🗑</button>
-        <select class="recording-category-select" aria-label="Category for ${escapeHtml(recording.name)}">${recordingCategoryOptions(recording.category || 'Uncategorized')}</select>
+        <div class="quiet-menu-wrap recording-row-actions">
+          <button class="quiet-icon-button recording-options-button" type="button" aria-label="Options for ${escapeHtml(recording.name)}" title="Recording options" aria-expanded="false" aria-controls="${actionMenuId}" aria-haspopup="menu" data-quiet-menu="${actionMenuId}">···</button>
+          <div id="${actionMenuId}" class="quiet-menu hidden" role="menu" aria-label="Options for ${escapeHtml(recording.name)}">
+            <button class="recording-rename-button" type="button" role="menuitem" ${isBusy ? 'disabled' : ''} aria-label="Rename ${escapeHtml(recording.name)}">Rename recording…</button>
+            <label class="quiet-menu-field">Category<select class="recording-category-select" aria-label="Category for ${escapeHtml(recording.name)}">${recordingCategoryOptions(recording.category || 'Uncategorized')}</select></label>
+            <hr />
+            <button class="recording-delete-button quiet-danger" type="button" role="menuitem" aria-label="Move ${escapeHtml(recording.name)} to Trash">Move to Trash…</button>
+          </div>
+        </div>
       </div>
       <div class="recording-rename-editor hidden">
         <input class="recording-rename-input" value="${escapeHtml(baseName)}" aria-label="New recording name" />
@@ -3757,6 +3787,7 @@ async function moveRecordingToTrash(recording) {
     const wasProcessing = state.transcribingPaths.has(recording.path);
     if (wasProcessing) showToast('Stopping local processing and moving clip to Trash…', 'warning', 2600);
     await window.recorderAPI.deleteRecording(recording.path);
+    if (state.savedPath === recording.path) clearSavedRecordingResult();
     state.transcribingPaths.delete(recording.path);
     setRecordingFavorite(recording.path, false);
     await refreshRecordings();
@@ -4355,6 +4386,7 @@ function renderSpeakerCorrectionPanel() {
   if (!panel) return;
   const speakers = state.speakerRecordingPath === state.selectedPlaybackPath && Array.isArray(state.speakerDefinitions) ? state.speakerDefinitions : [];
   panel.classList.toggle('hidden', !state.selectedPlaybackPath || speakers.length < 1);
+  panel.classList.toggle('quiet-speaker-hidden', state.transcriptView !== 'speakers');
   if (!speakers.length) { panel.innerHTML = ''; return; }
   const rows = speakers.map((entry) => {
     const colorClass = window.PulseStudioSpeakerTools?.className(entry.speaker) || '';
@@ -6379,6 +6411,8 @@ function handleCaptureSourceEnded(source, kind = 'video', captureIndex = 0) {
 async function startRecording() {
   if (state.isStarting || state.isStopping || (state.mediaRecorder && state.mediaRecorder.state !== 'inactive')) return;
   state.isStarting = true;
+  state.recordingGeneration += 1;
+  clearSavedRecordingResult();
   stopPreflightMicMonitor(false);
   setRecordConfigurationLocked(true);
   setStartButtonPhase('preparing');
@@ -6627,19 +6661,60 @@ function stoppedRecordingUiIsIdle() {
   return !state.isStarting && !state.isStopping && (!state.mediaRecorder || state.mediaRecorder.state === 'inactive');
 }
 
+function clearSavedRecordingResult() {
+  state.savedPath = null;
+  state.savedRecordingKind = null;
+  $('savedPath').textContent = '';
+  $('savedSummary').textContent = '';
+  $('saveWarning').textContent = '';
+  $('saveWarning').classList.add('hidden');
+  $('resultPanel').classList.add('hidden');
+  $('showInFolder').disabled = true;
+  $('copySavedPath').disabled = true;
+}
+
+function renderSavedRecordingResult() {
+  const path = typeof state.savedPath === 'string' ? state.savedPath.trim() : '';
+  $('savedPath').textContent = path;
+  $('savedSummary').textContent = path
+    ? `${state.savedRecordingKind === 'audio' ? 'Your audio recording' : 'Your recording'} was saved automatically.` : '';
+  $('showInFolder').disabled = !path;
+  $('copySavedPath').disabled = !path;
+  $('resultPanel').classList.toggle('hidden', !path || state.currentWorkspace !== 'capture' || !stoppedRecordingUiIsIdle() || state.viewMode === 'compact');
+}
+
+function initSavedRecordingResultActions() {
+  $('showInFolder').addEventListener('click', () => state.savedPath && window.recorderAPI.showInFolder(state.savedPath));
+  $('copySavedPath').addEventListener('click', async () => {
+    if (!state.savedPath) return;
+    await window.recorderAPI.copyText(state.savedPath);
+    $('savedSummary').textContent = 'Recording path copied to clipboard.';
+  });
+}
+
 async function finalizeStoppedRecording(sealed, context) {
   const sessionId = sealed?.sessionId;
   if (!sessionId) return { ok: false, error: new Error('Stopped recording did not create a save session.') };
   state.finalizingRecordingSessions.add(sessionId);
   try {
     const result = await window.recorderAPI.finalizeSealedRecording(sessionId);
+    if (typeof result?.path !== 'string' || !result.path.trim()) throw new Error('The saved recording did not return a valid file path.');
     if (context.markers.length && Number(result?.markerCount || 0) < context.markers.length) {
       // Compatibility fallback only. v0.2.92 persists runtime bookmarks in the main
       // process before the finalized recording is released from its recovery session.
       await window.recorderAPI.saveRecordingMarkers(result.path, context.markers);
     }
-    if (context.stopSequence === state.recordingStopSequence) state.savedPath = result.path;
-    await refreshRecordings();
+    if (context.stopSequence === state.recordingStopSequence && context.recordingGeneration === state.recordingGeneration) {
+      state.savedPath = result.path;
+      state.savedRecordingKind = context.kind;
+      renderSavedRecordingResult();
+    }
+    // The saved file is validated and released by the main process already. A
+    // directory-wide library refresh must not keep Record/Mini in the Saving phase
+    // or turn a successful save into a recovery error when one library entry fails.
+    void refreshRecordings().catch(() => {
+      try { window.recorderAPI.logEvent?.('warn', 'recording.library-refresh-failed', { recordingSaved: true }); } catch {}
+    });
     runAutomaticTranscription(result.path, false);
     return { ok: true, result };
   } catch (error) {
@@ -6675,6 +6750,7 @@ async function stopRecording(options = {}) {
   const hadNeuralMicrophone = Boolean(state.neuralMicRecorder && state.neuralMicRecorder.state !== 'inactive');
   const markers = [...state.pendingMarkers];
   const stopSequence = ++state.recordingStopSequence;
+  const recordingGeneration = state.recordingGeneration;
   const durationMs = elapsedMs();
   await checkpointActiveRecording('recording-stop').catch(() => {});
   stopRecordingCheckpointTimer();
@@ -6754,8 +6830,9 @@ async function stopRecording(options = {}) {
     state.recordingStartHardBlocked = false;
     state.recordingStartHardBlockReason = '';
 
-    const saved = await finalizeStoppedRecording(sealed, { durationMs, kind, markers, stopSequence, automaticReason });
+    const saved = await finalizeStoppedRecording(sealed, { durationMs, kind, markers, stopSequence, recordingGeneration, automaticReason });
     state.isStopping = false;
+    renderSavedRecordingResult();
     $('stopButton').disabled = false;
     $('pauseButton').disabled = false;
     $('snapshotRecording').disabled = false;
@@ -7104,6 +7181,138 @@ function initPlaybackLibraryTools() {
   renderBookmarkRangeExport();
 }
 
+function closeQuietPlaybackMenus(restoreFocus = false) {
+  const open = [...document.querySelectorAll('#playbackView .quiet-menu:not(.hidden)')];
+  for (const menu of open) {
+    menu.classList.add('hidden');
+    const trigger = document.querySelector(`[data-quiet-menu="${menu.id}"]`);
+    trigger?.setAttribute('aria-expanded', 'false');
+    if (restoreFocus) trigger?.focus();
+  }
+}
+
+function positionQuietPlaybackMenu(menu, trigger) {
+  const anchor = trigger.getBoundingClientRect();
+  const margin = 8;
+  menu.style.maxHeight = `${Math.max(100, window.innerHeight - margin * 2)}px`;
+  const bounds = menu.getBoundingClientRect();
+  const availableBelow = window.innerHeight - anchor.bottom - margin;
+  const top = bounds.height <= availableBelow || anchor.top < bounds.height + margin
+    ? Math.min(anchor.bottom + 5, Math.max(margin, window.innerHeight - bounds.height - margin))
+    : anchor.top - bounds.height - 5;
+  // Older seek-menu styles use !important anchoring inside the toolbar.
+  // All Quiet menus share viewport anchoring, including that retained control.
+  menu.style.setProperty('left', `${clamp(anchor.right - bounds.width, margin, Math.max(margin, window.innerWidth - bounds.width - margin))}px`, 'important');
+  menu.style.setProperty('top', `${Math.max(margin, top)}px`, 'important');
+}
+
+function toggleQuietPlaybackMenu(trigger, focusFirst = false) {
+  const menu = $(trigger?.dataset.quietMenu);
+  if (!menu) return;
+  const opening = menu.classList.contains('hidden');
+  closeQuietPlaybackMenus();
+  closeSeekOptionsMenu();
+  if (!opening) return;
+  // Proxies inherit the real action's availability; they never bypass guards.
+  menu.querySelectorAll('[data-quiet-proxy]').forEach((button) => {
+    const target = $(button.dataset.quietProxy);
+    button.disabled = !target || target.disabled;
+  });
+  if ($('retryPlaybackTranscription')) $('retryPlaybackTranscription').disabled = !state.selectedPlaybackPath || state.transcribingPaths.has(state.selectedPlaybackPath);
+  if ($('retryPlaybackSpeakers')) $('retryPlaybackSpeakers').disabled = !state.selectedPlaybackPath || state.speakerLoading;
+  if ($('openSpeakerCorrections')) $('openSpeakerCorrections').disabled = !state.selectedPlaybackPath || !state.speakerDefinitions?.length;
+  menu.classList.remove('hidden');
+  trigger.setAttribute('aria-expanded', 'true');
+  positionQuietPlaybackMenu(menu, trigger);
+  if (focusFirst) menu.querySelector('button:not(:disabled),select:not(:disabled),input:not(:disabled)')?.focus();
+}
+
+function initQuietStudioPlayback() {
+  const playback = $('playbackView');
+  if (!playback || playback.dataset.quietReady === 'true') return;
+  playback.dataset.quietReady = 'true';
+  playback.addEventListener('click', (event) => {
+    const trigger = event.target.closest('[data-quiet-menu]');
+    if (trigger) { event.stopPropagation(); toggleQuietPlaybackMenu(trigger); return; }
+    const proxy = event.target.closest('[data-quiet-proxy]');
+    if (proxy && !proxy.disabled) $(proxy.dataset.quietProxy)?.click();
+    const tool = event.target.closest('[data-quiet-tool]');
+    if (tool) {
+      setPlaybackInspectorTool(tool.dataset.quietTool);
+      const focusTarget = tool.dataset.quietRange ? $('bookmarkRangeStart') : $(`playback${tool.dataset.quietTool[0].toUpperCase()}${tool.dataset.quietTool.slice(1)}Tab`);
+      focusTarget?.focus();
+      focusTarget?.scrollIntoView({ block: 'nearest' });
+    }
+    if (event.target.closest('.quiet-menu button:not([data-quiet-menu])')) closeQuietPlaybackMenus();
+  });
+  playback.addEventListener('keydown', (event) => {
+    const trigger = event.target.closest('[data-quiet-menu]');
+    if (trigger && event.key === 'Tab') { closeQuietPlaybackMenus(); return; }
+    if (trigger && ['ArrowDown', 'ArrowUp'].includes(event.key)) {
+      event.preventDefault(); event.stopPropagation();
+      if ($(trigger.dataset.quietMenu)?.classList.contains('hidden')) toggleQuietPlaybackMenu(trigger, true);
+      else $(trigger.dataset.quietMenu)?.querySelector('button:not(:disabled),select:not(:disabled),input:not(:disabled)')?.focus();
+      return;
+    }
+    const menu = event.target.closest('.quiet-menu');
+    if (!menu) return;
+    if (event.key === 'Escape') { event.preventDefault(); event.stopPropagation(); closeQuietPlaybackMenus(true); return; }
+    if (event.key === 'Tab') {
+      if (menu.id === 'libraryRefineMenu') {
+        const fields = [...menu.querySelectorAll('select:not(:disabled)')];
+        const index = fields.indexOf(document.activeElement);
+        if ((!event.shiftKey && index === fields.length - 1) || (event.shiftKey && index === 0)) closeQuietPlaybackMenus(true);
+      } else closeQuietPlaybackMenus();
+      return;
+    }
+    // Native selects and sliders retain their arrow keys.
+    if (event.target.matches('input,select') || !['ArrowDown', 'ArrowUp', 'Home', 'End'].includes(event.key)) return;
+    event.preventDefault(); event.stopPropagation();
+    const items = [...menu.querySelectorAll('button:not(:disabled),select:not(:disabled),input:not(:disabled)')];
+    if (!items.length) return;
+    const index = items.indexOf(document.activeElement);
+    const next = event.key === 'Home' ? 0 : event.key === 'End' ? items.length - 1
+      : (index + (event.key === 'ArrowDown' ? 1 : -1) + items.length) % items.length;
+    items[next].focus();
+  });
+  playback.addEventListener('click', (event) => {
+    // Existing bookmark controls stop bubbling to protect waveform gestures.
+    // Defer their menu dismissal until their original action has run.
+    if (event.target.closest('.quiet-menu button:not([data-quiet-menu])')) queueMicrotask(() => closeQuietPlaybackMenus());
+  }, true);
+  document.addEventListener('click', (event) => {
+    if (!event.target.closest('#playbackView .quiet-menu,#playbackView [data-quiet-menu]')) closeQuietPlaybackMenus();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && document.querySelector('#playbackView .quiet-menu:not(.hidden)')) {
+      event.preventDefault(); closeQuietPlaybackMenus(true);
+    }
+  });
+  document.addEventListener('scroll', (event) => { if (!event.target.closest?.('.quiet-menu')) closeQuietPlaybackMenus(); }, true);
+  window.addEventListener('resize', () => closeQuietPlaybackMenus());
+  $('libraryRefreshAction')?.addEventListener('click', () => $('refreshRecordings')?.click());
+  $('libraryOpenFolderAction')?.addEventListener('click', () => $('openRecordingsFolder')?.click());
+  $('libraryChangeFolderAction')?.addEventListener('click', chooseRecordingFolder);
+  $('libraryMediaFilter')?.addEventListener('change', (event) => {
+    setLibraryQuickFilter(event.target.value);
+  });
+  $('transcriptViewSelect')?.addEventListener('change', (event) => setTranscriptView(event.target.value, true));
+  $('retryPlaybackTranscription')?.addEventListener('click', () => {
+    if (state.selectedPlaybackPath && !state.transcribingPaths.has(state.selectedPlaybackPath)) runAutomaticTranscription(state.selectedPlaybackPath, true, true);
+  });
+  $('retryPlaybackSpeakers')?.addEventListener('click', () => {
+    if (state.selectedPlaybackPath && !state.speakerLoading) loadPlaybackSpeakers(state.selectedPlaybackPath, state.playbackSelectionToken, true).catch(() => {});
+  });
+  $('openSpeakerCorrections')?.addEventListener('click', () => {
+    state.speakerCorrectionsCollapsed = false;
+    localStorage.setItem('speakerCorrectionsCollapsed', '0');
+    setTranscriptView('speakers', true);
+    renderSpeakerCorrectionPanel();
+    $('speakerCorrectionPanel')?.scrollIntoView({ block: 'nearest' });
+    $('speakerCorrectionPanel')?.querySelector('input')?.focus();
+  });
+}
+
 async function exportPlaybackAudio() {
   if (!state.selectedPlaybackPath || state.editBusy) return;
   const format = $('exportAudioFormat')?.value === 'mp3' ? 'mp3' : 'm4a';
@@ -7423,44 +7632,7 @@ function updateUpdateUi(status) {
 
 function updateAnalyticsUi(status) {
   const value = status || {};
-  const toggle = $('analyticsToggle');
-  const statusNode = $('analyticsStatus');
-  const detail = $('analyticsDetail');
-  if (toggle) {
-    toggle.disabled = !value.configured;
-    toggle.classList.toggle('is-on', Boolean(value.enabled));
-    toggle.setAttribute('aria-pressed', value.enabled ? 'true' : 'false');
-  }
-  if (statusNode) {
-    statusNode.textContent = !value.configured
-      ? 'Analytics backend not configured yet.'
-      : value.enabled
-        ? (value.lastError ? 'On · waiting to reconnect' : 'On · anonymous usage metrics enabled')
-        : 'Off · no usage analytics are sent';
-  }
-  if (detail) detail.textContent = !value.configured
-    ? 'Owner setup required before distributed copies can report analytics.'
-    : 'Version, OS, sessions, feature use, recording reliability, and update adoption only.';
   if ($('diagnosticAnalytics')) $('diagnosticAnalytics').textContent = !value.configured ? 'Not configured' : value.enabled ? '✓ Anonymous analytics on' : 'Off';
-}
-
-async function showAnalyticsReminderIfDisabled() {
-  const status = await window.recorderAPI.getAnalyticsStatus?.().catch(() => null);
-  if (!status?.configured || status.enabled) return false;
-  const dialog = $('analyticsReminderDialog');
-  if (!dialog || dialog.open) return false;
-  const returnToMini = state.viewMode === 'compact';
-  if (returnToMini) await applyViewMode('full', true);
-  dialog.dataset.returnToMini = returnToMini ? '1' : '0';
-  dialog.showModal();
-  return true;
-}
-
-async function closeAnalyticsReminder() {
-  const dialog = $('analyticsReminderDialog');
-  const returnToMini = dialog?.dataset.returnToMini === '1';
-  dialog?.close();
-  if (returnToMini) await applyViewMode('compact', true);
 }
 
 const anonymousUsageGroups = Object.freeze({
@@ -7474,8 +7646,8 @@ const anonymousUsageGroups = Object.freeze({
   copyAllInsights: 'insights', regenerateInsights: 'insights', insightsPanelToggle: 'insights', chaptersToggle: 'insights', meetingSummaryToggle: 'insights', copySummary: 'insights', actionItemsToggle: 'insights', copyActionItems: 'insights',
   trimStartHandle: 'editing', trimEndHandle: 'editing', setTrimStart: 'editing', setTrimEnd: 'editing', saveTrimmedCopy: 'editing', addCutSegment: 'editing', clearCutSegments: 'editing', saveMultiCutCopy: 'editing',
   cancelRecoveryButton: 'recovery', recordingKindVideoButton: 'recording', recordingKindAudioButton: 'recording', webcamQuickToggle: 'webcam', preflightMicMuteButton: 'microphone', recordDestinationChange: 'recording', startButton: 'recording', cancelAiJob: 'ai', recordingMicToggle: 'microphone', pausePrimaryButton: 'recording', bookmarkPrimaryButton: 'bookmarks', retryRecovery: 'recovery', showRecoveryFiles: 'recovery', discardRecovery: 'recovery', recoverDiagnostics: 'recovery', discardRecoveryDiagnostics: 'recovery', stopBackgroundWork: 'recovery', dismissRecoveryNotice: 'recovery',
-  settingsCollapseButton: 'settings', recordAdvancedToggle: 'settings', changeRecordingFolder: 'settings', resetRecordingFolder: 'settings', appToolsToggle: 'settings', windowCapturePrivacyToggle: 'privacy', analyticsToggle: 'privacy', voiceEnrollButton: 'my_voice', voiceClearButton: 'my_voice', openModelManager: 'ai', openDiagnostics: 'diagnostics', sendFeedback: 'feedback', exportDiagnosticsQuick: 'diagnostics', snapshotRecording: 'snapshot', bookmarkRecording: 'bookmarks', pauseButton: 'recording', stopButton: 'recording', recordingBookmarkTextSave: 'bookmarks', clearRegion: 'capture', applyRegion: 'capture', createCategoryConfirm: 'library',
-  exportDiagnostics: 'diagnostics', copyDiagnostics: 'diagnostics', openLogs: 'diagnostics', sendFeedbackDiagnostics: 'feedback', checkUpdates: 'updates', installUpdate: 'updates', openModelsFolder: 'ai', refreshModels: 'ai', themeClassicChoice: 'appearance', themeStudioChoice: 'appearance', themesAppearanceToggle: 'appearance', analyticsReminderContinue: 'privacy', analyticsReminderEnable: 'privacy', firstRunChooseFolder: 'onboarding', completeFirstRun: 'onboarding'
+  settingsCollapseButton: 'settings', recordAdvancedToggle: 'settings', changeRecordingFolder: 'settings', resetRecordingFolder: 'settings', appToolsToggle: 'settings', windowCapturePrivacyToggle: 'privacy', voiceEnrollButton: 'my_voice', voiceClearButton: 'my_voice', openModelManager: 'ai', openDiagnostics: 'diagnostics', sendFeedback: 'feedback', exportDiagnosticsQuick: 'diagnostics', snapshotRecording: 'snapshot', bookmarkRecording: 'bookmarks', pauseButton: 'recording', stopButton: 'recording', recordingBookmarkTextSave: 'bookmarks', clearRegion: 'capture', applyRegion: 'capture', createCategoryConfirm: 'library',
+  exportDiagnostics: 'diagnostics', copyDiagnostics: 'diagnostics', openLogs: 'diagnostics', sendFeedbackDiagnostics: 'feedback', checkUpdates: 'updates', installUpdate: 'updates', openModelsFolder: 'ai', refreshModels: 'ai', themeClassicChoice: 'appearance', themeStudioChoice: 'appearance', themesAppearanceToggle: 'appearance', firstRunChooseFolder: 'onboarding', completeFirstRun: 'onboarding'
 });
 
 const anonymousSafeValues = new Set([
@@ -7811,7 +7983,7 @@ async function init() {
   state.platformInfo = info;
   applyStartupRecoveryState({ inProgress: Boolean(info.startupRecoveryInProgress) });
   document.documentElement.dataset.platform = info.platform;
-  $('aboutVersion').textContent = info.version || '0.2.140';
+  $('aboutVersion').textContent = info.version || '0.2.143';
   renderWindowCapturePrivacy(await window.recorderAPI.getWindowCapturePrivacy?.().catch(() => ({ enabled: true, supported: info.platform === 'darwin' || info.platform === 'win32' })) || { enabled: true, supported: true });
   const applicationAudioOption = $('computerAudioMode')?.querySelector('option[value="application"]');
   if (applicationAudioOption && !info.applicationAudioSupported) applicationAudioOption.disabled = true;
@@ -7840,6 +8012,7 @@ async function init() {
   initPlaybackSplitter();
   initPlaybackInspector();
   initPlaybackLibraryTools();
+  initQuietStudioPlayback();
   initWaveformResizeObserver();
   initStickyPlaybackControls();
   document.querySelector('[data-seek="-1"]')?.setAttribute('title', 'Back 1 second (←)');
@@ -8053,24 +8226,8 @@ async function init() {
   $('helpButton').addEventListener('click', () => $('helpDialog').showModal());
   $('aboutButton').addEventListener('click', openAboutDiagnostics);
   $('openDiagnostics')?.addEventListener('click', openAboutDiagnostics);
-  $('analyticsToggle')?.addEventListener('click', async () => {
-    const button = $('analyticsToggle');
-    if (!button || button.disabled) return;
-    const next = button.getAttribute('aria-pressed') !== 'true';
-    const status = await window.recorderAPI.setAnalyticsEnabled(next).catch(() => null);
-    if (status) updateAnalyticsUi(status);
-  });
   $('sendFeedback')?.addEventListener('click', openFeedbackPage);
   $('sendFeedbackDiagnostics')?.addEventListener('click', openFeedbackPage);
-  $('analyticsReminderEnable')?.addEventListener('click', async () => {
-    const button = $('analyticsReminderEnable');
-    if (button) button.disabled = true;
-    const status = await window.recorderAPI.setAnalyticsEnabled(true).catch(() => null);
-    if (status) updateAnalyticsUi(status);
-    await closeAnalyticsReminder();
-    if (button) button.disabled = false;
-  });
-  $('analyticsReminderContinue')?.addEventListener('click', closeAnalyticsReminder);
   $('openModelManager')?.addEventListener('click', async () => { $('modelManagerDialog').showModal(); await refreshModelManager(); });
   $('refreshModels')?.addEventListener('click', refreshModelManager);
   $('openModelsFolder')?.addEventListener('click', () => window.recorderAPI.openLocalModelsFolder());
@@ -8128,12 +8285,7 @@ async function init() {
   $('stopBackgroundWork')?.addEventListener('click', stopBackgroundWorkFromUi);
   $('showRecoveryFiles')?.addEventListener('click', () => window.recorderAPI.openRecoveryFolder());
   $('dismissRecoveryNotice')?.addEventListener('click', hideRecoveryNotice);
-  const firstRunShown = await showFirstRunSetupIfNeeded();
-  if (firstRunShown) {
-    $('firstRunDialog')?.addEventListener('close', () => { setTimeout(() => { void showAnalyticsReminderIfDisabled(); }, 180); }, { once: true });
-  } else {
-    await showAnalyticsReminderIfDisabled();
-  }
+  await showFirstRunSetupIfNeeded();
   $('copyDiagnostics')?.addEventListener('click', async () => { const d = state.lastDiagnostics || await refreshDiagnostics(); if (!d) return; await window.recorderAPI.copyText(JSON.stringify(d, null, 2)); showToast('Diagnostics copied'); });
   async function exportDiagnosticsFromUi(triggerButton = null) {
     const buttons = [$('exportDiagnostics'), $('exportDiagnosticsQuick')].filter(Boolean);
@@ -8289,12 +8441,7 @@ async function init() {
   $('microphoneDevice').addEventListener('change', async () => { localStorage.setItem('microphoneDevice', $('microphoneDevice').value || 'default'); await updateReadiness(); refreshPreflightMicMonitor(); });
   $('recordCountdown')?.addEventListener('change', () => localStorage.setItem('recordCountdown', $('recordCountdown').value));
 
-  $('showInFolder').addEventListener('click', () => state.savedPath && window.recorderAPI.showInFolder(state.savedPath));
-  $('copySavedPath').addEventListener('click', async () => {
-    if (!state.savedPath) return;
-    await window.recorderAPI.copyText(state.savedPath);
-    $('savedSummary').textContent = 'Recording path copied to clipboard.';
-  });
+  initSavedRecordingResultActions();
   $('changeRecordingFolder')?.addEventListener('click', chooseRecordingFolder);
   $('recordDestinationChange')?.addEventListener('click', chooseRecordingFolder);
   $('resetRecordingFolder')?.addEventListener('click', resetRecordingFolder);
@@ -8307,9 +8454,6 @@ async function init() {
   $('renamePlaybackFile').addEventListener('click', () => {
     if (state.selectedPlaybackPath) startInlineRename(state.selectedPlaybackPath);
   });
-  $('playbackMoreButton')?.addEventListener('click', (event) => { event.stopPropagation(); togglePlaybackMoreMenu(); });
-  $('playbackMoreMenu')?.addEventListener('click', (event) => event.stopPropagation());
-  document.addEventListener('click', closePlaybackMoreMenu);
   $('moreShowTranscriptFiles')?.addEventListener('click', () => {
     const target = state.transcriptTxtPath || state.transcriptSrtPath || state.transcriptTargetPath;
     if (target) window.recorderAPI.showInFolder(target);
@@ -8320,9 +8464,6 @@ async function init() {
   document.querySelectorAll('[data-seek]').forEach((button) => {
     button.addEventListener('click', () => { pulsePlayerControl(button); seekPlayback(Number(button.dataset.seek)); closeSeekOptionsMenu(); });
   });
-  $('seekOptionsToggle')?.addEventListener('click', (event) => { event.stopPropagation(); toggleSeekOptionsMenu(); });
-  $('seekOptionsMenu')?.addEventListener('click', (event) => event.stopPropagation());
-  document.addEventListener('click', closeSeekOptionsMenu);
   $('playPausePlayback').addEventListener('click', () => { pulsePlayerControl($('playPausePlayback')); togglePlayback(); });
   $('waveformTimeline')?.addEventListener('pointermove', updateTimelineHoverPreview);
   $('waveformTimeline')?.addEventListener('pointerdown', seekWaveformFromPointer);

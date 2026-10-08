@@ -1,18 +1,18 @@
 # PulseStudio Analytics
 
-PulseStudio v0.2.140 remains connected to the PulseStudio PostHog Cloud project (US region).
+PulseStudio v0.2.143 remains connected to the PulseStudio PostHog Cloud project (US region).
 This release preserves the existing backend configuration, anonymous installation
 identity, and saved analytics preference while updating the reported app version.
 
 ## Privacy
 
-PulseStudio uses an opt-out desktop analytics model. Anonymous product analytics are enabled by default when the configured PostHog backend is available. Users can disable or re-enable them at any time under **App & AI tools > Privacy > Share anonymous usage analytics**. When disabled, PulseStudio does not send product analytics.
+Anonymous product analytics are enabled by default when the configured PostHog backend is available. v0.2.142 removes the analytics switch and launch reminder from the interface. The existing backend preference remains stored and respected across upgrades; an installation with a previously stored disabled preference does not send product analytics. The backend configuration and event content limits are unchanged.
 
 PulseStudio never includes recordings, screen contents, microphone/system audio, transcripts, filenames, bookmark text, names, email addresses, or exact location in analytics events. A random installation ID is used as the PostHog `distinct_id`. PostHog may derive coarse country/region information from the network request.
 
 ## Core analytics available
 
-PulseStudio v0.2.140 retains the privacy-limited instrumentation from v0.2.129 for product usage, trends, reliability, and errors, with the same PostHog project token. Event properties use control IDs, categorical settings, counters, duration buckets, and sanitized error names/codes rather than user content.
+PulseStudio v0.2.143 retains the privacy-limited instrumentation from v0.2.129 for product usage, trends, reliability, and errors, with the same PostHog project token. Event properties use control IDs, categorical settings, counters, duration buckets, and sanitized error names/codes rather than user content.
 
 - Active installations and sessions (`app_started`, `app_heartbeat`, `app_closed`), session IDs, launch counts and install-age trends
 - App version, OS, architecture, Electron version and portable/installed mode

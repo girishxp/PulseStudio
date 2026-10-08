@@ -1,4 +1,4 @@
-PulseStudio 0.2.140 — one shared folder for Mac and Windows
+PulseStudio 0.2.143 — one shared folder for Mac and Windows
 =========================================================
 
 1. Extract the complete ZIP into a writable location.
@@ -13,6 +13,13 @@ The included application components are ready for Apple silicon Mac and
 64-bit Windows. Apple silicon Mac first launch unpacks its bundled runtime
 locally, without a setup download. Windows launches its included executable
 directly; no Node installation, dependency download, or build is needed.
+Before Mac launch, v0.2.143 prepares the physical host as Pulse Studio.app,
+with an Electron.app compatibility link to the same executable and bundle ID.
+Quit an older PulseStudio instance completely before opening the updated app.
+A running host is never moved; the launcher asks you to quit and reopen if needed.
+No host re-signing or permission reset is performed. Existing PulseStudio
+settings, recordings and application data are retained.
+
 Intel Mac remains supported through the launcher's bounded first-time setup.
 Windows ARM uses x64 emulation and needs Windows 11 x64 application support.
 
@@ -20,7 +27,7 @@ Full and Mini View
 ------------------
 The Classic Mac interface keeps the existing recording, playback, audio, AI,
 privacy, and diagnostic options. Full View keeps its complete recording setup
-and Studio Desk Playback library; there is no transparency control in Full View.
+and Quiet Studio Playback library; there is no transparency control in Full View.
 New installs use Light appearance; your saved light/dark choice is kept on upgrade.
 
 Choose the pastel blue Open Mini Controller action in Full View to keep the
@@ -49,16 +56,17 @@ the window. Full View always stays opaque.
 Hover briefly over an icon for a short tooltip. Mini tooltips appear outside
 the controller so they do not cover the recording information or buttons.
 
-Studio Desk Playback
+Quiet Studio Playback
 --------------------
 Open Playback and choose a recording from the library on the left. The player,
 waveform, transport, bookmarks, snapshots, CC, volume, speed, and fullscreen
-stay in the center. Transcript, Show in folder, and audio/video export actions
-remain beside the player. Search, filters, categories, favorites, rename, Trash,
-and batch selection remain with the library.
+stay in the center. Related file and export actions are grouped beside the
+player. Search, filters, categories, favorites, rename, Trash, and batch
+selection remain available in the library. Open an action group for the
+less-frequent controls without leaving the recording.
 
 Use the tools inspector on the right:
-- Transcript: views, search, speaker corrections, and exports.
+- Transcript: views, search and exports, with speaker corrections in speaker view.
 - Insights: chapters, meeting notes, and action items.
 - Trim & cuts: export between two bookmarks, precision trim, and multiple cuts.
 - Timeline: bookmark and chapter navigation.
@@ -68,8 +76,10 @@ Only that interval is saved. Audio-only recordings offer Audio, TXT and SRT.
 If a transcript sentence crosses a marker or lacks usable timings, PulseStudio
 transcribes just the selected audio; SRT times start on the exported clip timeline.
 
-Use Sort above Category to order recordings by date, duration, name or file size,
-in either direction. The choice is remembered; Previous/Next follow that order.
+The recording-type/favorites filter remains on one row. Open Sort & filter
+for category choices and all eight date, duration, name and file-size sorts.
+The sort choice is remembered; Previous/Next follow that order. Drag the
+full-height divider between the library and player to resize them.
 In a narrower window, these tools stack below the player.
 Recording setup stays in Record, and Mini stays a compact recording controller.
 
@@ -101,9 +111,18 @@ The Mac launcher is locally signed, without Apple notarization. If macOS blocks
 its first opening, review it in System Settings > Privacy & Security.
 If macOS asks to access the folder containing PulseStudio, allow that access
 so it can read its shared application files.
-The Dock shows Pulse Studio on the prepared Mac runtime. Only display strings
-are changed after checking that the host allows it; its code identity is retained.
-Sealed or unfamiliar hosts keep their existing name and still launch normally.
+v0.2.143 opens the physical Pulse Studio.app recording host and retains
+Electron.app as a compatibility link to the same executable and bundle ID.
+Its executable, signature and established PulseStudio data folder are retained.
+A running host is never moved. Quit PulseStudio completely, then double-click
+the updated PulseStudio.app launcher to finish preparing the Mac app name.
+Sealed or unfamiliar runtime identities are left unchanged; the launcher shows
+a preparation error if it cannot safely prepare the supplied host.
+The Pearl Screen icon has a light pearl tile with a monitor and waveform.
+Its Mac Dock symbol is a slightly stronger sky blue while idle. During recording,
+the symbol and lower tile shading turn a more distinct aqua. Stopping or
+cancelling restores blue. There is no red recording dot or flashing.
+Windows uses the same Pearl Screen design as its application icon.
 Grant Screen & System Audio Recording, Microphone, or Camera when needed to
 the current host, which macOS may label Electron or Pulse Studio.
 Quit and reopen PulseStudio if macOS requests it after a permission change.
@@ -119,17 +138,56 @@ Fresh transcripts run automatically in the background. The app reuses its local
 Whisper Small q8 model session to avoid loading it again for each recording.
 The existing quality settings and recording priority are preserved. The first
 model load and longer recordings can still take time. Your established
-application-data folder, anonymous analytics and saved consent are retained.
-The GitHub update popup still offers Update Now, Remind Me Later, and Skip
-This Version. Installation waits until recording and other active work is safe.
+application-data folder, anonymous analytics configuration and saved backend
+preference are retained. Analytics are on by default; the interface no longer
+includes the analytics switch or launch reminder.
+
+Both Mac and Windows check the public GitHub Latest release about 2.5 seconds
+after launch and every 15 minutes while open. The in-app update popup offers
+Update Now, Remind Me Later (24 hours), and Skip This Version. Checks and
+installation wait for recording, saving, recovery and other active work to finish.
+Update Now downloads, verifies and installs the shared ZIP, then reopens the app
+when safe. A downloaded update can also offer Install & Reopen if work blocks
+the initial restart. Internet access and a writable shared folder are needed;
+users do not need GitHub login. Manual Check for updates is in About & Diagnostics.
+
+Saving after Stop
+-----------------
+The app saves a stopped recording in the background. Record and Mini leave the
+Saving phase once the media is ready, without waiting for library metadata to
+refresh. A v0.2.141 fix removes an unnecessary full-recording audio decode
+from audio-stream checks. These checks now read the media headers.
+Final encoding, microphone cleanup and mixing can still take time, especially
+for long recordings or a codec that requires conversion. The protected source
+and recovery controls remain available if saving is interrupted. Automatic
+transcription runs separately after the media is ready and does not delay the
+saved-media result.
 
 Publishing
 ----------
-Use Publish PulseStudio.command included in this folder to publish
-PulseStudio-cross-platform-v0.2.140.zip. It can select the newest matching ZIP
-beside the publisher or in Downloads and asks before publishing.
-It uploads the complete shared ZIP. Bundled runtimes are excluded from Git
-source commits. This delivery has not been published to GitHub.
+The owner can publish the same shared Mac/Windows ZIP from either OS:
+Mac: double-click Publish PulseStudio.command.
+Windows: double-click Publish PulseStudio - Windows.bat, keeping the companion
+Publish PulseStudio - Windows.ps1 beside it in this same folder.
+
+Each selects the newest matching ZIP beside the publisher or in Downloads,
+then asks before commit, push and release creation. For this version, use
+PulseStudio-cross-platform-v0.2.143.zip. One complete upload serves both Mac
+and Windows users. Bundled runtimes are excluded from Git source commits.
+A source push alone does not notify users: the newer semantic version tag and
+matching ZIP must be published as a public Latest release. Nothing is published
+by merely creating or extracting this package.
+
+Both publisher helpers verify the active GitHub.com account and repository
+write access directly. An unrelated enterprise account cannot redirect these
+checks. Windows publishing requires Git for Windows and GitHub CLI installed
+once, a signed-in GitHub.com account with write access, and a clean local main
+branch. The PowerShell companion uses the Windows PowerShell supplied with
+Windows 10/11. It does not change saved execution-policy settings.
+See PUBLISHING.md for first-time owner setup and full-path examples.
+
+Both accept --check-only (or --check). This is a read-only account/repository
+access check: no ZIP unpacking, source edits, commit, push or release creation.
 
 If launch fails
 ---------------
@@ -143,6 +201,15 @@ Version base
 The application builds on the supplied v0.2.129 source and the shared launchers
 and Mini refinements through v0.2.138. v0.2.139 added Studio Desk Playback and
 automatic supported whole-system speaker echo cancellation with browser fallback.
-v0.2.140 adds bookmark interval exports, library sorting, the PulseStudio media
-folder, Pulse Studio Dock naming, and reusable background speech transcription. The compact Mini controls, natural tooltips, Mini-only 0–75%
-transparency, native controls, and shared prepared runtimes remain in place.
+v0.2.140 added bookmark interval exports, library sorting, the PulseStudio media
+folder, Pulse Studio Dock naming, and reusable background speech transcription.
+v0.2.141 adds Quiet Studio Playback organization, Pearl Screen idle/recording
+Dock artwork, the audio-stream-check save fix, and the corrected publisher.
+v0.2.142 calms Full View recording controls, compacts library choices, extends
+the library resize divider and fixes the saved-recording path display. It removes
+the analytics switch/reminder and makes Pearl Screen recording colour clearer.
+v0.2.143 prepares the physical Pulse Studio.app host on Mac, deepens only the
+recording icon and adds Windows owner publishing next to the Mac publisher.
+The idle icon and common launch folder are retained.
+The compact Mini controls, natural tooltips, Mini-only 0–75% transparency,
+native controls, and shared prepared runtimes remain in place.
